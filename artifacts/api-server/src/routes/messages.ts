@@ -7,21 +7,7 @@ import {
   CreateMessageParams,
   CreateMessageBody,
 } from "@workspace/api-zod";
-
-const AGENT_RESPONSES: Record<string, string[]> = {
-  default: [
-    "I understand your request. Let me process that for you.",
-    "That's an interesting point. Based on my analysis, I would suggest proceeding with the outlined approach.",
-    "I've reviewed the information. Here's my assessment: the proposed strategy aligns well with your objectives.",
-    "Understood. I can handle that task. Initiating the workflow now.",
-    "Great question. The optimal solution here involves a multi-step approach.",
-  ],
-};
-
-function getAgentResponse(_agentModel: string, _userMessage: string): string {
-  const responses = AGENT_RESPONSES.default;
-  return responses[Math.floor(Math.random() * responses.length)];
-}
+import { getAIResponse } from "../lib/aiProviders";
 
 const router = Router({ mergeParams: true });
 
@@ -49,7 +35,15 @@ router.post("/", async (req, res) => {
     content: body.content,
   }).returning();
 
-  const agentReply = getAgentResponse(agent?.model ?? "default", body.content);
+  let agentReply: string;
+  try {
+    agentReply = await getAIResponse(agent?.model ?? "", body.content);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to generate an AI response.";
+    req.log.error({ err: error, model: agent?.model }, "AI provider request failed");
+    return res.status(500).json({ error: message });
+  }
+
   const [assistantMsg] = await db.insert(messagesTable).values({
     sessionId: id,
     role: "assistant",

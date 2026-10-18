@@ -66,6 +66,8 @@ async function buildAll() {
       "@google-cloud/*",
       "@google/*",
       "googleapis",
+      "openai",
+      "@anthropic-ai/sdk",
       "firebase-admin",
       "@parcel/watcher",
       "@sentry/profiling-node",
