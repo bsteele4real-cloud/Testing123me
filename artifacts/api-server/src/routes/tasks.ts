@@ -69,7 +69,10 @@ router.patch("/:id", async (req, res) => {
     .where(eq(tasksTable.id, id))
     .returning();
 
-  if (!task) return res.status(404).json({ error: "Task not found" });
+  if (!task) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
 
   await db.insert(activityTable).values({
     type: "task_updated",

@@ -62,7 +62,10 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = GetAgentParams.parse({ id: Number(req.params.id) });
   const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, id));
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
 
   const [sessionCount] = await db.select({ count: count() }).from(sessionsTable).where(eq(sessionsTable.agentId, id));
   const [msgCount] = await db
@@ -89,7 +92,10 @@ router.patch("/:id", async (req, res) => {
     .where(eq(agentsTable.id, id))
     .returning();
 
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
 
   if (body.status) {
     await db.insert(activityTable).values({
