@@ -12,27 +12,30 @@ export default function DashboardHome() {
   const activity = activityResult.items;
   const activityLoading = activityQuery.isLoading;
   const activityError = activityResult.failed;
+  const statsReady = typeof statsQuery.data?.totalAgents === "number";
+  const statsFailed = !statsQuery.isLoading && (statsQuery.isError || !statsReady);
   const count = (value: number | undefined) =>
-    statsQuery.isLoading || statsQuery.isError ? "—" : String(value ?? 0);
+    statsQuery.isLoading || statsFailed ? "—" : String(value ?? 0);
   const health = useHealthCheck({
     query: {
       queryKey: getHealthCheckQueryKey(),
       refetchInterval: 30_000,
     },
   });
+  const healthStatus = typeof health.data?.status === "string" ? health.data.status : null;
 
   const systemLabel = health.isPending
     ? "CHECKING"
-    : health.isError || health.data?.status !== "ok"
-      ? "UNAVAILABLE"
-      : "NOMINAL";
-  const databaseUp = health.data?.status === "ok";
+    : healthStatus === "ok"
+      ? "NOMINAL"
+      : "UNAVAILABLE";
+  const databaseUp = healthStatus === "ok";
   const logLines = [
     health.isPending
       ? "[health] checking /api/healthz"
-      : health.isError
-        ? "[health] /api/healthz did not respond"
-        : `[health] /api/healthz status ${health.data?.status ?? "unknown"}`,
+      : healthStatus
+        ? `[health] /api/healthz status ${healthStatus}`
+        : "[health] /api/healthz returned an unexpected response",
     databaseUp ? "[db] postgres check passed" : "[db] postgres check did not pass",
     ...(activityError ? ["[activity] feed unavailable"] : []),
     ...(activityLoading ? ["[activity] loading recent events"] : []),
@@ -45,7 +48,7 @@ export default function DashboardHome() {
   return (
     <div className="flex-1 overflow-auto p-4 md:p-8 bg-background">
       <h1 className="text-2xl font-sans font-bold tracking-tight mb-8">Mission Control</h1>
-      {statsQuery.isError && (
+      {(statsFailed || statsQuery.isError) && (
         <div role="alert" className="mb-6 border border-destructive/40 bg-destructive/10 rounded-md p-4 text-sm flex items-center justify-between gap-3">
           <span>Dashboard totals could not be loaded.</span>
           <Button type="button" variant="outline" onClick={() => statsQuery.refetch()}>Retry</Button>

@@ -12,11 +12,12 @@ export default function SettingsPage() {
   const health = useHealthCheck({
     query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 30_000 },
   });
+  const healthStatus = typeof health.data?.status === "string" ? health.data.status : null;
   const healthLabel = health.isPending
     ? "Checking"
-    : health.isError || health.data?.status !== "ok"
-      ? "Unavailable"
-      : "Nominal";
+    : healthStatus === "ok"
+      ? "Nominal"
+      : "Unavailable";
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-8 bg-background">
