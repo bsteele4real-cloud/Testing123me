@@ -1,17 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
+import type { ChatTurn } from "./chatContext";
 
 const MAX_TOKENS = 1_024;
 
-function requireEnvironmentVariable(name: string): string {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`${name} is required to use this model but is not configured.`);
-  }
-
-  return value;
+export interface AIChatRequest {
+  model: string;
+  systemPrompt: string;
+  messages: ChatTurn[];
 }
 
 function requireTextResponse(content: string | null | undefined, provider: string): string {
@@ -24,14 +21,30 @@ function requireTextResponse(content: string | null | undefined, provider: strin
   return text;
 }
 
-export async function getAIResponse(model: string, userMessage: string): Promise<string> {
+function requireUserEnding(messages: ChatTurn[]): ChatTurn[] {
+  const last = messages[messages.length - 1];
+
+  if (!last || last.role !== "user") {
+    throw new Error("Chat request must end with a user message.");
+  }
+
+  return messages;
+}
+
+export async function getAIResponse(request: AIChatRequest): Promise<string> {
+  const messages = requireUserEnding(request.messages);
+  const model = request.model;
+
   if (model.startsWith("gpt-")) {
     const client = new OpenAI({
       apiKey: requireEnvironmentVariable("OPENAI_API_KEY"),
     });
     const completion = await client.chat.completions.create({
       model,
-      messages: [{ role: "user", content: userMessage }],
+      messages: [
+        { role: "system", content: request.systemPrompt },
+        ...messages,
+      ],
     });
 
     return requireTextResponse(completion.choices[0]?.message.content, "OpenAI");
@@ -44,7 +57,8 @@ export async function getAIResponse(model: string, userMessage: string): Promise
     const message = await client.messages.create({
       model,
       max_tokens: MAX_TOKENS,
-      messages: [{ role: "user", content: userMessage }],
+      system: request.systemPrompt,
+      messages,
     });
     const text = message.content
       .filter((block) => block.type === "text")
@@ -59,7 +73,23 @@ export async function getAIResponse(model: string, userMessage: string): Promise
     const client = new GoogleGenerativeAI(
       requireEnvironmentVariable("GOOGLE_AI_API_KEY"),
     );
-    const result = await client.getGenerativeModel({ model }).generateContent(userMessage);
+    const generative = client.getGenerativeModel({
+      model,
+      systemInstruction: request.systemPrompt,
+    });
+    const prior = messages.slice(0, -1);
+    const latest = messages[messages.length - 1]?.content ?? "";
+    const result =
+      prior.length === 0
+        ? await generative.generateContent(latest)
+        : await generative
+            .startChat({
+              history: prior.map((turn) => ({
+                role: turn.role === "assistant" ? "model" : "user",
+                parts: [{ text: turn.content }],
+              })),
+            })
+            .sendMessage(latest);
 
     return requireTextResponse(result.response.text(), "Google Gemini");
   }
@@ -71,11 +101,24 @@ export async function getAIResponse(model: string, userMessage: string): Promise
     });
     const completion = await client.chat.completions.create({
       model,
-      messages: [{ role: "user", content: userMessage }],
+      messages: [
+        { role: "system", content: request.systemPrompt },
+        ...messages,
+      ],
     });
 
     return requireTextResponse(completion.choices[0]?.message.content, "Hermes");
   }
 
   throw new Error(`Model "${model}" is not configured.`);
+}
+
+function requireEnvironmentVariable(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is required to use this model but is not configured.`);
+  }
+
+  return value;
 }
