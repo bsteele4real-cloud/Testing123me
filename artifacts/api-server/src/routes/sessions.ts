@@ -8,6 +8,7 @@ import {
   DeleteSessionParams,
 } from "@workspace/api-zod";
 import { resolveSessionTitle } from "../lib/sessionTitle";
+import { requirePositiveInt } from "../lib/errorHandler";
 
 const router = Router();
 
@@ -66,7 +67,8 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const { id } = GetSessionParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = GetSessionParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, id));
   if (!session) {
     res.status(404).json({ error: "Session not found" });
@@ -88,7 +90,8 @@ router.get("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const { id } = DeleteSessionParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = DeleteSessionParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   await db.delete(sessionsTable).where(eq(sessionsTable.id, id));
   res.status(204).send();
 });

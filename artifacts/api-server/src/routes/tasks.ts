@@ -8,6 +8,7 @@ import {
   UpdateTaskParams,
   DeleteTaskParams,
 } from "@workspace/api-zod";
+import { requirePositiveInt } from "../lib/errorHandler";
 
 const router = Router();
 
@@ -55,7 +56,8 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const { id } = UpdateTaskParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = UpdateTaskParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const body = UpdateTaskBody.parse(req.body);
 
   const [task] = await db.update(tasksTable)
@@ -84,7 +86,8 @@ router.patch("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const { id } = DeleteTaskParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = DeleteTaskParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   await db.delete(tasksTable).where(eq(tasksTable.id, id));
   res.status(204).send();
 });

@@ -122,4 +122,39 @@ describe("createSessionReply", () => {
     assert.equal(store.touched, false);
     assert.equal(store.activity, 0);
   });
+
+  it("does not return provider secrets when the model call fails", async () => {
+    const store = memoryStore();
+    const result = await createSessionReply(
+      store,
+      async () => {
+        throw new Error("401 Incorrect API key sk-live-secret");
+      },
+      7,
+      "new question",
+    );
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.includes("sk-live-secret"), false);
+      assert.equal(result.error.includes("Incorrect API key"), false);
+    }
+    assert.equal(store.messages.some((message) => message.content === "new question"), false);
+  });
+
+  it("removes the user message when saving the reply fails", async () => {
+    const store = memoryStore();
+    const insert = store.insertMessage.bind(store);
+    let calls = 0;
+    store.insertMessage = async (input) => {
+      calls += 1;
+      if (calls > 1) throw new Error("disk full");
+      return insert(input);
+    };
+    const result = await createSessionReply(store, async () => "new answer", 7, "new question");
+
+    assert.equal(result.ok, false);
+    assert.equal(store.messages.some((message) => message.content === "new question"), false);
+    assert.equal(store.activity, 0);
+  });
 });

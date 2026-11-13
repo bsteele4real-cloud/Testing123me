@@ -63,7 +63,6 @@ export default function ChatPage() {
     mutation: {
       onSuccess: () => {
         pendingTextRef.current = null;
-        setOptimisticMessage(null);
         setInputMessage("");
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(activeSessionId!) });
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
@@ -100,6 +99,12 @@ export default function ChatPage() {
       setIsNewSessionOpen(true);
     }
   }, [requestedAgentId, sessions, agents, sessionsQuery.isLoading, agentsQuery.isLoading]);
+
+  useEffect(() => {
+    if (!optimisticMessage) return;
+    const saved = messages.some((message) => message.role === "user" && message.content === optimisticMessage);
+    if (saved) setOptimisticMessage(null);
+  }, [messages, optimisticMessage]);
 
   useEffect(() => {
     if (scrollRef.current) {

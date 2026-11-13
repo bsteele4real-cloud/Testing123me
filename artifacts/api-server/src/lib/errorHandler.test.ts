@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { errorHandler } from "./errorHandler.ts";
+import { errorHandler, requirePositiveInt } from "./errorHandler.ts";
 
 function mockResponse() {
   const state = { statusCode: 0, body: undefined as unknown, headersSent: false };
@@ -42,5 +42,23 @@ describe("errorHandler", () => {
     assert.deepEqual(failed.state.body, { error: "Internal server error" });
     assert.equal(JSON.stringify(failed.state.body).includes("secret"), false);
     assert.equal(logged, true);
+  });
+
+  it("rejects ids that are not positive integers", () => {
+    assert.equal(requirePositiveInt(4), 4);
+    assert.throws(() => requirePositiveInt(1.5), /positive integer/);
+    assert.throws(() => requirePositiveInt(0), /positive integer/);
+  });
+
+  it("turns a bad JSON body into a 400 without echoing the payload", () => {
+    const parseError = Object.assign(new SyntaxError("Unexpected token"), {
+      status: 400,
+      type: "entity.parse.failed",
+      body: "{\"password\":\"secret\"",
+    });
+    const response = mockResponse();
+    errorHandler(parseError, { log: { error() {} } } as never, response.res as never, () => {});
+    assert.equal(response.state.statusCode, 400);
+    assert.deepEqual(response.state.body, { error: "Invalid JSON body." });
   });
 });

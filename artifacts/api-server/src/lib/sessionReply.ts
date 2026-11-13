@@ -35,6 +35,26 @@ export interface ReplyStore {
   logActivity(input: { description: string; agentId: number | null }): Promise<void>;
 }
 
+const PUBLIC_REPLY_ERROR =
+  /is required to use this model|is not configured|returned an empty response|must end with a user message|Message exceeds|Message content is required/;
+
+export function publicReplyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (/sk-|bearer |password|secret/i.test(message)) {
+    return "The agent could not reply. Try again.";
+  }
+  if (PUBLIC_REPLY_ERROR.test(message)) return message;
+  return "The agent could not reply. Try again.";
+}
+
+async function deleteQuietly(store: ReplyStore, id: number): Promise<void> {
+  try {
+    await store.deleteMessage(id);
+  } catch {
+    // Keep the original failure. A failed cleanup must not replace it.
+  }
+}
+
 export type ReplyOutcome =
   | { ok: true; user: StoredMessage; assistant: StoredMessage }
   | { ok: false; status: 400 | 404 | 500; error: string };
@@ -80,21 +100,24 @@ export async function createSessionReply(
   try {
     agentReply = await complete(request);
   } catch (error) {
-    await store.deleteMessage(user.id);
-    const message = error instanceof Error ? error.message : "Failed to generate an AI response.";
-    return { ok: false, status: 500, error: message };
+    await deleteQuietly(store, user.id);
+    return { ok: false, status: 500, error: publicReplyError(error) };
   }
 
-  const assistant = await store.insertMessage({
-    sessionId,
-    role: "assistant",
-    content: agentReply,
-  });
-  await store.touchSession(sessionId, new Date());
-  await store.logActivity({
-    description: `Message sent in session #${sessionId}`,
-    agentId: agent.id,
-  });
-
-  return { ok: true, user, assistant };
+  try {
+    const assistant = await store.insertMessage({
+      sessionId,
+      role: "assistant",
+      content: agentReply,
+    });
+    await store.touchSession(sessionId, new Date());
+    await store.logActivity({
+      description: `Message sent in session #${sessionId}`,
+      agentId: agent.id,
+    });
+    return { ok: true, user, assistant };
+  } catch {
+    await deleteQuietly(store, user.id);
+    return { ok: false, status: 500, error: "The agent could not reply. Try again." };
+  }
 }

@@ -79,6 +79,17 @@ describe("boundChatMessages", () => {
     assert.deepEqual(messages, [{ role: "user", content: "keep" }]);
   });
 
+  it("drops older turns when the character budget is full and keeps the latest user message", () => {
+    const messages = boundChatMessages([
+      { role: "user", content: "x".repeat(100) },
+      { role: "assistant", content: "y".repeat(100) },
+      { role: "user", content: "latest" },
+    ], 20, 120);
+
+    assert.equal(messages.at(-1)?.content, "latest");
+    assert.equal(messages.some((message) => message.content.startsWith("xxx")), false);
+  });
+
   it("merges consecutive messages with the same role", () => {
     const messages = boundChatMessages([
       { role: "user", content: "one" },

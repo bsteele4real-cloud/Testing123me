@@ -5,6 +5,7 @@ import { eq, asc } from "drizzle-orm";
 import { ListMessagesParams, CreateMessageParams, CreateMessageBody } from "@workspace/api-zod";
 import { getAIResponse } from "../lib/aiProviders";
 import { createSessionReply, type ReplyStore, type StoredMessage } from "../lib/sessionReply";
+import { requirePositiveInt } from "../lib/errorHandler";
 
 const router = Router({ mergeParams: true });
 
@@ -70,7 +71,8 @@ function toStoredMessage(row: {
 }
 
 router.get("/", async (req: Request<{ id: string }>, res: Response) => {
-  const { id } = ListMessagesParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = ListMessagesParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const messages = await db.select().from(messagesTable)
     .where(eq(messagesTable.sessionId, id))
     .orderBy(asc(messagesTable.createdAt));
@@ -79,7 +81,8 @@ router.get("/", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.post("/", async (req: Request<{ id: string }>, res: Response) => {
-  const { id } = CreateMessageParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = CreateMessageParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const body = CreateMessageBody.parse(req.body);
   const result = await createSessionReply(store, getAIResponse, id, body.content);
 

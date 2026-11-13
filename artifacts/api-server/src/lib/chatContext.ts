@@ -1,4 +1,5 @@
 export const MAX_HISTORY_MESSAGES = 20;
+export const MAX_HISTORY_CHARS = 24_000;
 export const MAX_MESSAGE_CHARS = 8_000;
 export const MAX_PURPOSE_CHARS = 2_000;
 
@@ -54,6 +55,7 @@ export function buildSystemPrompt(agent: {
 export function boundChatMessages(
   messages: Array<{ role: string; content: string }>,
   limit = MAX_HISTORY_MESSAGES,
+  maxChars = MAX_HISTORY_CHARS,
 ): ChatTurn[] {
   const turns: ChatTurn[] = [];
 
@@ -75,10 +77,28 @@ export function boundChatMessages(
   }
 
   const bounded = turns.slice(-Math.max(1, limit));
+  return fitCharBudget(dropLeadingAssistant(bounded), maxChars);
+}
 
-  while (bounded.length > 0 && bounded[0]?.role !== "user") {
-    bounded.shift();
+function dropLeadingAssistant(turns: ChatTurn[]): ChatTurn[] {
+  const copy = [...turns];
+  while (copy.length > 0 && copy[0]?.role !== "user") {
+    copy.shift();
+  }
+  return copy;
+}
+
+function fitCharBudget(turns: ChatTurn[], maxChars: number): ChatTurn[] {
+  const selected: ChatTurn[] = [];
+  let used = 0;
+
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (!turn) continue;
+    if (selected.length > 0 && used + turn.content.length > maxChars) break;
+    selected.push(turn);
+    used += turn.content.length;
   }
 
-  return bounded;
+  return dropLeadingAssistant(selected.reverse());
 }
