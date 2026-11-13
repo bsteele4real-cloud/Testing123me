@@ -1,15 +1,59 @@
-import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey } from "@workspace/api-client-react";
+import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey, useHealthCheck, getHealthCheckQueryKey, type ActivityItem } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Cpu, MessageSquare, CheckSquare, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { readList } from "@/lib/query";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardHome() {
-  const { data: stats } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
-  const { data: activity = [] } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const statsQuery = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
+  const activityQuery = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const activityResult = readList<ActivityItem>(activityQuery.data, activityQuery.isError);
+  const activity = activityResult.items;
+  const activityLoading = activityQuery.isLoading;
+  const activityError = activityResult.failed;
+  const statsReady = typeof statsQuery.data?.totalAgents === "number";
+  const statsFailed = !statsQuery.isLoading && (statsQuery.isError || !statsReady);
+  const count = (value: number | undefined) =>
+    statsQuery.isLoading || statsFailed ? "—" : String(value ?? 0);
+  const health = useHealthCheck({
+    query: {
+      queryKey: getHealthCheckQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
+  const healthStatus = typeof health.data?.status === "string" ? health.data.status : null;
+
+  const systemLabel = health.isPending
+    ? "CHECKING"
+    : healthStatus === "ok"
+      ? "NOMINAL"
+      : "UNAVAILABLE";
+  const databaseUp = healthStatus === "ok";
+  const logLines = [
+    health.isPending
+      ? "[health] checking /api/healthz"
+      : healthStatus
+        ? `[health] /api/healthz status ${healthStatus}`
+        : "[health] /api/healthz returned an unexpected response",
+    databaseUp ? "[db] postgres check passed" : "[db] postgres check did not pass",
+    ...(activityError ? ["[activity] feed unavailable"] : []),
+    ...(activityLoading ? ["[activity] loading recent events"] : []),
+    ...activity.slice(0, 8).map((item) => `[activity] ${item.description}`),
+  ];
+  if (!activityLoading && !activityError && activity.length === 0) {
+    logLines.push("[activity] no events recorded");
+  }
 
   return (
-    <div className="flex-1 overflow-auto p-8 bg-background">
+    <div className="flex-1 overflow-auto p-4 md:p-8 bg-background">
       <h1 className="text-2xl font-sans font-bold tracking-tight mb-8">Mission Control</h1>
+      {(statsFailed || statsQuery.isError) && (
+        <div role="alert" className="mb-6 border border-destructive/40 bg-destructive/10 rounded-md p-4 text-sm flex items-center justify-between gap-3">
+          <span>Dashboard totals could not be loaded.</span>
+          <Button type="button" variant="outline" onClick={() => statsQuery.refetch()}>Retry</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card className="bg-card border-border/50">
@@ -18,9 +62,9 @@ export default function DashboardHome() {
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalAgents || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalAgents)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              <span className="text-green-500">{stats?.onlineAgents || 0}</span> ONLINE
+              <span className="text-green-500">{count(statsQuery.data?.onlineAgents)}</span> ONLINE
             </p>
           </CardContent>
         </Card>
@@ -31,9 +75,9 @@ export default function DashboardHome() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalSessions || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalSessions)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              {stats?.totalMessages || 0} MESSAGES EXCHANGED
+              {count(statsQuery.data?.totalMessages)} MESSAGES EXCHANGED
             </p>
           </CardContent>
         </Card>
@@ -44,10 +88,10 @@ export default function DashboardHome() {
             <CheckSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalTasks || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalTasks)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1 flex gap-2">
-              <span className="text-primary">{stats?.tasksByStatus?.todo || 0} TODO</span>
-              <span className="text-yellow-500">{stats?.tasksByStatus?.in_progress || 0} IN_PROG</span>
+              <span className="text-primary">{count(statsQuery.data?.tasksByStatus?.todo)} TODO</span>
+              <span className="text-yellow-500">{count(statsQuery.data?.tasksByStatus?.in_progress)} IN_PROG</span>
             </p>
           </CardContent>
         </Card>
@@ -58,9 +102,9 @@ export default function DashboardHome() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">NOMINAL</div>
+            <div className={`text-2xl font-bold ${systemLabel === "NOMINAL" ? "text-green-500" : systemLabel === "CHECKING" ? "text-muted-foreground" : "text-destructive"}`}>{systemLabel}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              ALL SYSTEMS GO
+              {databaseUp ? "DATABASE REACHABLE" : "CHECK API AND DATABASE"}
             </p>
           </CardContent>
         </Card>
@@ -73,6 +117,13 @@ export default function DashboardHome() {
           </CardHeader>
           <CardContent className="flex-1">
             <div className="space-y-4">
+              {activityError && (
+                <div role="alert" className="text-sm">
+                  Activity could not be loaded.
+                  <Button type="button" variant="outline" className="ml-3" onClick={() => activityQuery.refetch()}>Retry</Button>
+                </div>
+              )}
+              {activityLoading && <div role="status" className="text-sm text-muted-foreground">Loading activity…</div>}
               {activity.map((item) => (
                 <div key={item.id} className="flex items-start gap-4">
                   <div className="mt-0.5">
@@ -101,7 +152,7 @@ export default function DashboardHome() {
                   </div>
                 </div>
               ))}
-              {activity.length === 0 && (
+              {!activityLoading && !activityError && activity.length === 0 && (
                 <div className="text-sm text-muted-foreground text-center py-8">No recent activity</div>
               )}
             </div>
@@ -109,22 +160,18 @@ export default function DashboardHome() {
         </Card>
         
         <div className="border border-border/50 bg-card rounded-md overflow-hidden relative min-h-[300px]">
-          {/* Decorative Terminal view */}
           <div className="bg-muted px-4 py-2 border-b border-border/50 flex items-center gap-2">
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5" aria-hidden="true">
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50" />
               <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50" />
             </div>
-            <div className="text-xs font-mono text-muted-foreground ml-2">syslog - tail -f</div>
+            <div className="text-xs font-mono text-muted-foreground ml-2">live status</div>
           </div>
           <div className="p-4 font-mono text-xs text-muted-foreground space-y-1 overflow-auto h-[calc(100%-40px)]">
-            <div><span className="text-green-500">✔</span> [init] starting Agentic OS...</div>
-            <div><span className="text-green-500">✔</span> [db] connected to local sqlite</div>
-            <div><span className="text-primary">ℹ</span> [auth] local studio mode active</div>
-            <div><span className="text-green-500">✔</span> [api] listening on port 3000</div>
-            <div><span className="text-green-500">✔</span> [ws] websocket server ready</div>
-            <div className="pt-2 text-primary animate-pulse">_</div>
+            {logLines.map((line, index) => (
+              <div key={`${index}-${line}`}>{line}</div>
+            ))}
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   DeleteAgentParams,
   GetAgentParams,
 } from "@workspace/api-zod";
+import { requirePositiveInt } from "../lib/errorHandler";
 
 const router = Router();
 
@@ -60,9 +61,13 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const { id } = GetAgentParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = GetAgentParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, id));
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
 
   const [sessionCount] = await db.select({ count: count() }).from(sessionsTable).where(eq(sessionsTable.agentId, id));
   const [msgCount] = await db
@@ -75,7 +80,8 @@ router.get("/:id", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const { id } = UpdateAgentParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = UpdateAgentParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const body = UpdateAgentBody.parse(req.body);
 
   const [agent] = await db.update(agentsTable)
@@ -89,7 +95,10 @@ router.patch("/:id", async (req, res) => {
     .where(eq(agentsTable.id, id))
     .returning();
 
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
 
   if (body.status) {
     await db.insert(activityTable).values({
@@ -106,7 +115,8 @@ router.patch("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const { id } = DeleteAgentParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = DeleteAgentParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   await db.delete(agentsTable).where(eq(agentsTable.id, id));
   res.status(204).send();
 });

@@ -16,7 +16,11 @@ import { Plus, MoreVertical, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@workspace/api-client-react";
+import type { Task, TaskStatus, Agent } from "@workspace/api-client-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryState } from "@/components/query-state";
+import { readList } from "@/lib/query";
+import { toastError } from "@/lib/notify";
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: "todo", label: "TODO" },
@@ -27,14 +31,17 @@ const COLUMNS: { id: TaskStatus; label: string }[] = [
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
-  const { data: tasks = [] } = useListTasks({ query: { queryKey: getListTasksQueryKey() } });
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const tasksQuery = useListTasks({ query: { queryKey: getListTasksQueryKey() } });
+  const agentsQuery = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { items: tasks, failed: tasksFailed } = readList<Task>(tasksQuery.data, tasksQuery.isError);
+  const { items: agents } = readList<Agent>(agentsQuery.data, agentsQuery.isError);
 
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [newTaskAssignee, setNewTaskAssignee] = useState<string>("none");
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; title: string } | null>(null);
 
   const createTask = useCreateTask({
     mutation: {
@@ -45,19 +52,25 @@ export default function KanbanPage() {
         setNewTaskDesc("");
         setNewTaskPriority("medium");
         setNewTaskAssignee("none");
-      }
+      },
+      onError: (error) => toastError("Could not create task", error),
     }
   });
 
   const updateTask = useUpdateTask({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      onError: (error) => toastError("Could not update task", error),
     }
   });
 
   const deleteTask = useDeleteTask({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() })
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        setPendingDelete(null);
+      },
+      onError: (error) => toastError("Could not delete task", error),
     }
   });
 
@@ -77,7 +90,7 @@ export default function KanbanPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background p-6">
+    <div className="flex flex-col h-full bg-background p-4 md:p-6 min-w-0">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Task Queue</h1>
@@ -151,12 +164,19 @@ export default function KanbanPage() {
         </Dialog>
       </div>
 
-      <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
+      <QueryState
+        isLoading={tasksQuery.isLoading}
+        isError={tasksFailed}
+        loadingLabel="Loading tasks…"
+        errorLabel="Tasks could not be loaded."
+        onRetry={() => tasksQuery.refetch()}
+      >
+      <div className="flex-1 flex gap-4 md:gap-6 overflow-x-auto pb-4 min-w-0">
         {COLUMNS.map(column => (
           <div key={column.id} className="w-80 flex-shrink-0 flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-mono text-xs font-semibold text-muted-foreground">{column.label}</h3>
-              <span className="bg-muted px-2 py-0.5 rounded-sm text-[10px] font-mono">
+              <span className="bg-muted px-2 py-0.5 rounded-sm text-xs font-mono">
                 {tasks.filter(t => t.status === column.id).length}
               </span>
             </div>
@@ -167,15 +187,15 @@ export default function KanbanPage() {
                   key={task.id} 
                   className="bg-card border border-border/80 rounded-sm p-3 shadow-sm hover:border-primary/50 transition-colors group relative"
                 >
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Actions for ${task.title}`}>
                           <MoreVertical className="h-3 w-3" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
-                        <div className="px-2 py-1.5 text-muted-foreground opacity-50 uppercase text-[10px]">Move to</div>
+                        <div className="px-2 py-1.5 text-muted-foreground uppercase text-xs">Move to</div>
                         {COLUMNS.filter(c => c.id !== task.status).map(c => (
                           <DropdownMenuItem 
                             key={c.id}
@@ -184,9 +204,9 @@ export default function KanbanPage() {
                             {c.label}
                           </DropdownMenuItem>
                         ))}
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 border-t border-border/50 rounded-none pt-2"
-                          onClick={() => deleteTask.mutate({ id: task.id })}
+                          onSelect={() => setPendingDelete({ id: task.id, title: task.title })}
                         >
                           <Trash2 className="w-3 h-3 mr-2" /> Delete Task
                         </DropdownMenuItem>
@@ -197,7 +217,7 @@ export default function KanbanPage() {
                   <div className="flex flex-col gap-2">
                     <div className="pr-6">
                       <span className={cn(
-                        "inline-block px-1.5 py-0.5 rounded-[2px] text-[9px] font-mono uppercase mb-2",
+                        "inline-block px-1.5 py-0.5 rounded-[2px] text-xs font-mono uppercase mb-2",
                         task.priority === "high" ? "bg-destructive/20 text-destructive border border-destructive/20" :
                         task.priority === "medium" ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20" :
                         "bg-blue-500/10 text-blue-500 border border-blue-500/20"
@@ -214,7 +234,7 @@ export default function KanbanPage() {
                     )}
                     
                     <div className="mt-3 flex items-center justify-between">
-                      <div className="text-[10px] font-mono text-muted-foreground opacity-60">
+                      <div className="text-xs font-mono text-muted-foreground">
                         #{task.id}
                       </div>
                       
@@ -224,12 +244,12 @@ export default function KanbanPage() {
                             className="w-1.5 h-1.5 rounded-full" 
                             style={{ backgroundColor: task.assigneeAvatarColor || 'currentColor' }} 
                           />
-                          <span className="text-[10px] font-mono truncate max-w-[80px]">
+                          <span className="text-xs font-mono truncate max-w-[80px]">
                             {task.assigneeAgentName}
                           </span>
                         </div>
                       ) : (
-                        <div className="text-[10px] font-mono text-muted-foreground opacity-50 italic">
+                        <div className="text-xs font-mono text-muted-foreground italic">
                           unassigned
                         </div>
                       )}
@@ -241,6 +261,21 @@ export default function KanbanPage() {
           </div>
         ))}
       </div>
+      </QueryState>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete task?"}
+        description="This removes the task from the queue. This cannot be undone."
+        confirmLabel="Delete task"
+        pending={deleteTask.isPending}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteTask.mutate({ id: pendingDelete.id });
+        }}
+      />
     </div>
   );
 }

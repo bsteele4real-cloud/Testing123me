@@ -7,6 +7,8 @@ import {
   GetSessionParams,
   DeleteSessionParams,
 } from "@workspace/api-zod";
+import { resolveSessionTitle } from "../lib/sessionTitle";
+import { requirePositiveInt } from "../lib/errorHandler";
 
 const router = Router();
 
@@ -36,9 +38,12 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const body = CreateSessionBody.parse(req.body);
   const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, body.agentId));
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
 
-  const title = `Session with ${agent.name}`;
+  const title = resolveSessionTitle(body.title, agent.name);
   const [session] = await db.insert(sessionsTable).values({
     title,
     agentId: body.agentId,
@@ -62,9 +67,13 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const { id } = GetSessionParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = GetSessionParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, id));
-  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
 
   const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, session.agentId));
   const [msgCount] = await db.select({ count: count() }).from(messagesTable).where(eq(messagesTable.sessionId, session.id));
@@ -81,7 +90,8 @@ router.get("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const { id } = DeleteSessionParams.parse({ id: Number(req.params.id) });
+  const { id: rawId } = DeleteSessionParams.parse({ id: Number(req.params.id) });
+  const id = requirePositiveInt(rawId);
   await db.delete(sessionsTable).where(eq(sessionsTable.id, id));
   res.status(204).send();
 });

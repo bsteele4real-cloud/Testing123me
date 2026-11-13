@@ -1,14 +1,31 @@
-import { useListAgents, getListAgentsQueryKey } from "@workspace/api-client-react";
+import { useListAgents, getListAgentsQueryKey, type Agent } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Server, MessageSquare, LayoutDashboard, Settings, User } from "lucide-react";
+import { MessageSquare, LayoutDashboard, Settings, User, Columns3 } from "lucide-react";
+import { readList } from "@/lib/query";
 
-export function Sidebar() {
+export function Sidebar({
+  onNavigate,
+  className,
+}: {
+  onNavigate?: () => void;
+  className?: string;
+}) {
   const [location] = useLocation();
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const agentsQuery = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { items: agents, failed: agentsFailed } = readList<Agent>(agentsQuery.data, agentsQuery.isError);
+
+  const itemClass = (active: boolean) =>
+    cn(
+      "flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent transition-colors",
+      active && "bg-sidebar-accent text-sidebar-accent-foreground",
+    );
 
   return (
-    <div className="w-64 border-r border-sidebar-border bg-sidebar h-screen flex flex-col font-mono text-sm">
+    <div
+      className={cn("w-64 border-r border-sidebar-border bg-sidebar h-screen flex flex-col font-mono text-sm", className)}
+      onClick={onNavigate}
+    >
       <div className="p-4 border-b border-sidebar-border flex items-center gap-3">
         <div className="w-4 h-4 bg-primary flex items-center justify-center rounded-[2px]" />
         <span className="font-bold tracking-tight text-sidebar-foreground">AGENTIC OS</span>
@@ -16,57 +33,57 @@ export function Sidebar() {
 
       <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-6">
         <div className="px-3">
-          <h3 className="mb-2 px-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider">WORKSPACE</h3>
+          <h3 className="mb-2 px-2 text-xs font-semibold text-muted-foreground tracking-wider">WORKSPACE</h3>
           <div className="space-y-1">
-            <Link href="/">
-              <div className={cn("flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent cursor-pointer transition-colors", location === "/" && "bg-sidebar-accent text-sidebar-accent-foreground")}>
-                <LayoutDashboard className="w-4 h-4" />
-                <span>Mission Control</span>
-              </div>
+            <Link href="/" className={itemClass(location === "/")}>
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Mission Control</span>
             </Link>
-            <Link href="/chat">
-              <div className={cn("flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent cursor-pointer transition-colors", location === "/chat" && "bg-sidebar-accent text-sidebar-accent-foreground")}>
-                <MessageSquare className="w-4 h-4" />
-                <span>Sessions</span>
-              </div>
+            <Link href="/chat" className={itemClass(location === "/chat")}>
+              <MessageSquare className="w-4 h-4" />
+              <span>Sessions</span>
             </Link>
-            <Link href="/kanban">
-              <div className={cn("flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent cursor-pointer transition-colors", location === "/kanban" && "bg-sidebar-accent text-sidebar-accent-foreground")}>
-                <LayoutDashboard className="w-4 h-4" />
-                <span>Kanban</span>
-              </div>
+            <Link href="/kanban" className={itemClass(location === "/kanban")}>
+              <Columns3 className="w-4 h-4" />
+              <span>Kanban</span>
             </Link>
           </div>
         </div>
 
         <div className="px-3">
           <div className="flex items-center justify-between mb-2 px-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/50 tracking-wider">AGENTS</h3>
-            <Link href="/agents">
-              <div className="text-xs text-primary hover:underline cursor-pointer">Manage</div>
-            </Link>
+            <h3 className="text-xs font-semibold text-muted-foreground tracking-wider">AGENTS</h3>
+            <Link href="/agents" className="text-xs text-primary hover:underline">Manage</Link>
           </div>
           <div className="space-y-1">
+            {agentsFailed && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">Agents unavailable</p>
+            )}
             {agents.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent cursor-pointer transition-colors">
-                <div 
-                  className="w-2 h-2 rounded-full" 
-                  style={{ backgroundColor: agent.avatarColor || "var(--primary)" }} 
+              <Link
+                key={agent.id}
+                href={`/chat?agent=${agent.id}`}
+                className={itemClass(false)}
+              >
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: agent.avatarColor || "var(--primary)" }}
                 />
-                <span className="truncate flex-1">{agent.name}</span>
+                <span className="truncate flex-1 text-left">{agent.name}</span>
+                <span className="sr-only">{agent.status}</span>
                 <div className={cn("w-1.5 h-1.5 rounded-full", agent.status === "online" ? "bg-green-500" : agent.status === "busy" ? "bg-yellow-500" : "bg-gray-500")} />
-              </div>
+              </Link>
             ))}
           </div>
         </div>
 
         <div className="px-3">
-          <h3 className="mb-2 px-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider">SELF</h3>
+          <h3 className="mb-2 px-2 text-xs font-semibold text-muted-foreground tracking-wider">SELF</h3>
           <div className="space-y-1">
-            <div className="flex items-center gap-3 px-2 py-1.5 rounded-sm hover:bg-sidebar-accent cursor-pointer transition-colors text-muted-foreground">
+            <Link href="/settings" className={itemClass(location === "/settings")}>
               <Settings className="w-4 h-4" />
               <span>Settings</span>
-            </div>
+            </Link>
           </div>
         </div>
       </div>

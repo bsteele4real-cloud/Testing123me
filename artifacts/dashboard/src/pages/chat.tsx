@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type FormEvent } from "react";
 import { 
   useListSessions, getListSessionsQueryKey, 
   useListMessages, getListMessagesQueryKey, 
@@ -9,28 +9,43 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { MessageContent } from "@/components/message-content";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Send, MessageSquare } from "lucide-react";
+import { Plus, Send, MessageSquare, ChevronLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { toastError } from "@/lib/notify";
+import { readList } from "@/lib/query";
+import { useSearch } from "wouter";
+import type { Message, Session, Agent } from "@workspace/api-client-react";
 
 export default function ChatPage() {
   const queryClient = useQueryClient();
+  const search = useSearch();
+  const requestedAgentId = Number(new URLSearchParams(search).get("agent"));
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [showSessionList, setShowSessionList] = useState(true);
   const [isNewSessionOpen, setIsNewSessionOpen] = useState(false);
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   
-  const { data: sessions = [] } = useListSessions({ query: { queryKey: getListSessionsQueryKey() } });
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const sessionsQuery = useListSessions({ query: { queryKey: getListSessionsQueryKey() } });
+  const agentsQuery = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { items: sessions, failed: sessionsFailed } = readList<Session>(sessionsQuery.data, sessionsQuery.isError);
+  const { items: agents, failed: agentsFailed } = readList<Agent>(agentsQuery.data, agentsQuery.isError);
   
-  const { data: messages = [] } = useListMessages(activeSessionId!, {
+  const messagesQuery = useListMessages(activeSessionId ?? 0, {
     query: {
-      queryKey: getListMessagesQueryKey(activeSessionId!),
+      queryKey: getListMessagesQueryKey(activeSessionId ?? 0),
       enabled: !!activeSessionId
     }
   });
+  const { items: messages, failed: messagesFailed } = readList<Message>(
+    messagesQuery.data,
+    Boolean(activeSessionId) && messagesQuery.isError,
+  );
 
   const createSession = useCreateSession({
     mutation: {
@@ -39,37 +54,101 @@ export default function ChatPage() {
         setActiveSessionId(newSession.id);
         setIsNewSessionOpen(false);
         setNewSessionTitle("");
-      }
+      },
+      onError: (error) => toastError("Could not start session", error),
     }
   });
 
   const createMessage = useCreateMessage({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(activeSessionId!) });
+        const sessionId = pendingSessionIdRef.current;
+        pendingTextRef.current = null;
+        pendingSessionIdRef.current = null;
+        setPendingSend(null);
+        if (activeSessionIdRef.current === sessionId) {
+          setInputMessage("");
+        }
+        if (sessionId != null) {
+          queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(sessionId) });
+        }
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
-      }
+      },
+      onError: (error) => {
+        const failed = pendingTextRef.current ?? "";
+        const sessionId = pendingSessionIdRef.current;
+        pendingTextRef.current = null;
+        pendingSessionIdRef.current = null;
+        setPendingSend(null);
+        if (activeSessionIdRef.current === sessionId) {
+          setInputMessage((current) => (current.trim() ? current : failed));
+        }
+        toastError("Agent did not reply", error);
+      },
     }
   });
 
   const [inputMessage, setInputMessage] = useState("");
+  const [pendingSend, setPendingSend] = useState<{ sessionId: number; text: string } | null>(null);
+  const pendingTextRef = useRef<string | null>(null);
+  const pendingSessionIdRef = useRef<number | null>(null);
+  const activeSessionIdRef = useRef<number | null>(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+  const handledAgentRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!Number.isInteger(requestedAgentId) || requestedAgentId <= 0) {
+      handledAgentRef.current = null;
+      return;
+    }
+    if (handledAgentRef.current === requestedAgentId) return;
+    if (sessionsQuery.isLoading || agentsQuery.isLoading) return;
+    if (sessionsFailed || agentsFailed) return;
+    const match = sessions.find((session) => session.agentId === requestedAgentId);
+    if (match) {
+      handledAgentRef.current = requestedAgentId;
+      setActiveSessionId(match.id);
+      setShowSessionList(false);
+      return;
+    }
+    if (agents.some((agent) => agent.id === requestedAgentId)) {
+      handledAgentRef.current = requestedAgentId;
+      setSelectedAgentId(requestedAgentId);
+      setIsNewSessionOpen(true);
+      return;
+    }
+    handledAgentRef.current = requestedAgentId;
+  }, [requestedAgentId, sessions, agents, sessionsQuery.isLoading, agentsQuery.isLoading, sessionsFailed, agentsFailed]);
+
+  useEffect(() => {
+    if (!pendingSend || pendingSend.sessionId !== activeSessionId) return;
+    const saved = messages.some((message) => message.role === "user" && message.content === pendingSend.text);
+    if (saved) setPendingSend(null);
+  }, [messages, pendingSend, activeSessionId]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, pendingSend, createMessage.isPending]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || !activeSessionId) return;
-    
+  const pendingHere = pendingSend?.sessionId === activeSessionId;
+
+  const handleSendMessage = (e?: FormEvent) => {
+    e?.preventDefault();
+    const text = inputMessage.trim();
+    if (!text || !activeSessionId || (pendingHere && createMessage.isPending)) return;
+
+    pendingTextRef.current = text;
+    pendingSessionIdRef.current = activeSessionId;
+    setPendingSend({ sessionId: activeSessionId, text });
+    setInputMessage("");
+    setShowSessionList(false);
     createMessage.mutate({
       id: activeSessionId,
-      data: { content: inputMessage }
+      data: { content: text }
     });
-    setInputMessage("");
   };
 
   const handleCreateSession = (e: React.FormEvent) => {
@@ -77,7 +156,7 @@ export default function ChatPage() {
     if (!selectedAgentId) return;
     createSession.mutate({
       data: {
-        title: newSessionTitle || "New Session",
+        title: newSessionTitle.trim() || undefined,
         agentId: selectedAgentId
       }
     });
@@ -86,9 +165,11 @@ export default function ChatPage() {
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
   return (
-    <div className="flex h-full bg-background overflow-hidden">
-      {/* Sessions Sidebar */}
-      <div className="w-80 border-r border-border/50 flex flex-col bg-card/30">
+    <div className="flex h-full min-w-0 bg-background overflow-hidden">
+      <div className={cn(
+        "w-full md:w-80 border-r border-border/50 flex-col bg-card/30",
+        showSessionList ? "flex" : "hidden md:flex",
+      )}>
         <div className="p-4 border-b border-border/50 flex items-center justify-between">
           <h2 className="font-mono text-sm font-semibold tracking-wider">SESSIONS</h2>
           <Dialog open={isNewSessionOpen} onOpenChange={setIsNewSessionOpen}>
@@ -116,10 +197,12 @@ export default function ChatPage() {
                   <Label className="font-mono text-xs">SELECT AGENT</Label>
                   <div className="grid gap-2 max-h-48 overflow-auto pr-2">
                     {agents.map(agent => (
-                      <div 
+                      <button
+                        type="button"
                         key={agent.id}
+                        aria-pressed={selectedAgentId === agent.id}
                         className={cn(
-                          "flex items-center gap-3 p-2 rounded-md border cursor-pointer transition-colors",
+                          "flex w-full items-center gap-3 p-2 rounded-md border text-left transition-colors",
                           selectedAgentId === agent.id 
                             ? "border-primary bg-primary/10" 
                             : "border-border hover:border-border/80 hover:bg-muted/50"
@@ -131,7 +214,7 @@ export default function ChatPage() {
                           <div className="text-sm font-medium truncate">{agent.name}</div>
                           <div className="text-xs text-muted-foreground font-mono truncate">{agent.model}</div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -143,12 +226,29 @@ export default function ChatPage() {
           </Dialog>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {sessionsQuery.isLoading && (
+            <div role="status" className="p-4 text-xs text-muted-foreground font-mono">LOADING SESSIONS</div>
+          )}
+          {sessionsFailed && (
+            <div role="alert" className="p-4 text-xs">
+              Sessions could not be loaded.
+              <button type="button" className="block mt-2 underline" onClick={() => sessionsQuery.refetch()}>Retry</button>
+            </div>
+          )}
+          {agentsFailed && (
+            <div role="alert" className="px-4 pb-2 text-xs">Agents could not be loaded.</div>
+          )}
           {sessions.map(session => (
-            <div 
+            <button
+              type="button"
               key={session.id}
-              onClick={() => setActiveSessionId(session.id)}
+              aria-current={activeSessionId === session.id ? "true" : undefined}
+              onClick={() => {
+                setActiveSessionId(session.id);
+                setShowSessionList(false);
+              }}
               className={cn(
-                "p-3 rounded-md cursor-pointer transition-all border group",
+                "w-full text-left p-3 rounded-md transition-all border",
                 activeSessionId === session.id 
                   ? "bg-accent/10 border-accent text-accent-foreground" 
                   : "bg-transparent border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground"
@@ -157,19 +257,19 @@ export default function ChatPage() {
               <div className="flex justify-between items-start mb-1">
                 <div className="font-medium text-sm truncate pr-2">{session.title}</div>
                 {session.lastMessageAt && (
-                  <div className="text-[10px] font-mono whitespace-nowrap opacity-50">
+                  <div className="text-xs font-mono whitespace-nowrap text-muted-foreground">
                     {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: false })}
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono opacity-70">
+              <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: session.agentAvatarColor }} />
                 <span className="truncate">{session.agentName}</span>
-                <span className="px-1 py-0.5 bg-background border border-border/50 rounded-sm text-[9px]">{session.agentModel}</span>
+                <span className="px-1 py-0.5 bg-background border border-border/50 rounded-sm text-xs">{session.agentModel}</span>
               </div>
-            </div>
+            </button>
           ))}
-          {sessions.length === 0 && (
+          {!sessionsQuery.isLoading && !sessionsFailed && sessions.length === 0 && (
             <div className="p-4 text-center text-xs text-muted-foreground font-mono">
               NO SESSIONS ACTIVE
             </div>
@@ -177,12 +277,24 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-background/50 relative">
+      <div className={cn(
+        "flex-1 min-w-0 flex-col bg-background/50 relative",
+        showSessionList ? "hidden md:flex" : "flex",
+      )}>
         {activeSessionId && activeSession ? (
           <>
             {/* Header */}
-            <div className="h-14 border-b border-border/50 flex items-center px-6 bg-card/20 backdrop-blur-sm z-10 sticky top-0">
+            <div className="h-14 border-b border-border/50 flex items-center px-3 md:px-6 gap-2 bg-card/20 backdrop-blur-sm z-10 sticky top-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="md:hidden shrink-0"
+                aria-label="Back to sessions"
+                onClick={() => setShowSessionList(true)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
               <div className="flex items-center gap-3">
                 <div className="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]" style={{ backgroundColor: activeSession.agentAvatarColor }} />
                 <div>
@@ -198,7 +310,14 @@ export default function ChatPage() {
 
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.length === 0 ? (
+              {messagesFailed ? (
+                <div role="alert" className="text-sm">
+                  Messages could not be loaded.
+                  <button type="button" className="block mt-2 underline" onClick={() => messagesQuery.refetch()}>Retry</button>
+                </div>
+              ) : messagesQuery.isLoading ? (
+                <div role="status" className="text-sm text-muted-foreground">Loading messages…</div>
+              ) : messages.length === 0 && !pendingHere ? (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground font-mono">
                   [ System: Connection established with {activeSession.agentName}. Awaiting input. ]
                 </div>
@@ -216,49 +335,68 @@ export default function ChatPage() {
                         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: activeSession.agentAvatarColor }} />
                       )}
                       <span>{msg.role === "user" ? "YOU" : activeSession.agentName.toUpperCase()}</span>
-                      <span className="opacity-40">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="text-muted-foreground">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                     <div 
                       className={cn(
-                        "p-4 rounded-lg text-sm leading-relaxed",
+                        "p-4 rounded-lg text-sm leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_code]:font-mono [&_a]:underline",
                         msg.role === "user" 
                           ? "bg-primary text-primary-foreground rounded-tr-sm" 
                           : "bg-card border border-border/50 rounded-tl-sm shadow-sm"
                       )}
                     >
-                      {msg.content.split('\n').map((line, i) => (
-                        <span key={i}>
-                          {line}
-                          {i !== msg.content.split('\n').length - 1 && <br />}
-                        </span>
-                      ))}
+                      <MessageContent content={msg.content} />
                     </div>
                   </div>
                 ))
+              )}
+              {pendingHere && pendingSend && (
+                <div className="max-w-[80%] ml-auto flex flex-col gap-1 items-end">
+                  <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground mb-1">
+                    <span>YOU</span>
+                    <span>sending</span>
+                  </div>
+                  <div className="p-4 rounded-lg rounded-tr-sm text-sm leading-relaxed bg-primary text-primary-foreground [&_p]:my-1 [&_a]:underline">
+                    <MessageContent content={pendingSend.text} />
+                  </div>
+                </div>
+              )}
+              {pendingHere && createMessage.isPending && (
+                <div className="mr-auto flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: activeSession.agentAvatarColor }} />
+                  <span>{activeSession.agentName} is typing</span>
+                </div>
               )}
             </div>
 
             {/* Input */}
             <div className="p-4 border-t border-border/50 bg-card/20">
               <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative flex items-end">
-                <Input
+                <Textarea
                   value={inputMessage}
                   onChange={e => setInputMessage(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   placeholder={`Send a message to ${activeSession.agentName}...`}
-                  className="w-full bg-background border-border/50 pr-12 py-6 text-sm font-sans focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
-                  disabled={createMessage.isPending}
+                  className="w-full min-h-14 max-h-40 resize-none bg-background border-border/50 pr-12 text-sm font-sans focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
+                  disabled={pendingHere && createMessage.isPending}
+                  rows={2}
                 />
                 <Button 
                   type="submit" 
                   size="icon" 
                   className="absolute right-2 bottom-2 h-8 w-8 rounded-sm"
-                  disabled={!inputMessage.trim() || createMessage.isPending}
+                  disabled={!inputMessage.trim() || (pendingHere && createMessage.isPending)}
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
               <div className="text-center mt-2">
-                <span className="text-[10px] text-muted-foreground font-mono">AGENTIC OS // TERMINAL CHAT INTERFACE v1.0</span>
+                <span className="text-xs text-muted-foreground font-mono">Enter to send · Shift+Enter for a new line</span>
               </div>
             </div>
           </>
@@ -266,7 +404,7 @@ export default function ChatPage() {
           <div className="h-full flex items-center justify-center flex-col text-muted-foreground">
             <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="font-mono text-sm tracking-widest">NO SESSION SELECTED</h3>
-            <p className="text-xs mt-2 opacity-50">Select a session from the sidebar or create a new one.</p>
+            <p className="text-xs mt-2 text-muted-foreground">Select a session from the sidebar or create a new one.</p>
           </div>
         )}
       </div>
