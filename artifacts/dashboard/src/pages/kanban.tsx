@@ -16,7 +16,8 @@ import { Plus, MoreVertical, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@workspace/api-client-react";
+import type { TaskStatus } from "@workspace/api-client-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: "todo", label: "TODO" },
@@ -35,6 +36,7 @@ export default function KanbanPage() {
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [newTaskAssignee, setNewTaskAssignee] = useState<string>("none");
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; title: string } | null>(null);
 
   const createTask = useCreateTask({
     mutation: {
@@ -167,10 +169,10 @@ export default function KanbanPage() {
                   key={task.id} 
                   className="bg-card border border-border/80 rounded-sm p-3 shadow-sm hover:border-primary/50 transition-colors group relative"
                 >
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Actions for ${task.title}`}>
                           <MoreVertical className="h-3 w-3" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -184,9 +186,9 @@ export default function KanbanPage() {
                             {c.label}
                           </DropdownMenuItem>
                         ))}
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 border-t border-border/50 rounded-none pt-2"
-                          onClick={() => deleteTask.mutate({ id: task.id })}
+                          onSelect={() => setPendingDelete({ id: task.id, title: task.title })}
                         >
                           <Trash2 className="w-3 h-3 mr-2" /> Delete Task
                         </DropdownMenuItem>
@@ -241,6 +243,20 @@ export default function KanbanPage() {
           </div>
         ))}
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete task?"}
+        description="This removes the task from the queue. This cannot be undone."
+        confirmLabel="Delete task"
+        pending={deleteTask.isPending}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteTask.mutate({ id: pendingDelete.id }, { onSuccess: () => setPendingDelete(null) });
+        }}
+      />
     </div>
   );
 }

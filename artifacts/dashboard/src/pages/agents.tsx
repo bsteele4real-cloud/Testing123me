@@ -14,6 +14,7 @@ import { Plus, MoreVertical, Terminal, MessageSquare, Trash2 } from "lucide-reac
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const MODEL_OPTIONS = [
   "gpt-6-luna",
@@ -44,6 +45,7 @@ export default function AgentsPage() {
   const [newModel, setNewModel] = useState(MODEL_OPTIONS[0]);
   const [newDesc, setNewDesc] = useState("");
   const [newColor, setNewColor] = useState(COLOR_OPTIONS[0]);
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; name: string } | null>(null);
 
   const createAgent = useCreateAgent({
     mutation: {
@@ -163,7 +165,7 @@ export default function AgentsPage() {
             <div className="absolute top-4 right-4">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Actions for ${agent.name}`}>
                     <MoreVertical className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -178,9 +180,9 @@ export default function AgentsPage() {
                   <DropdownMenuItem onClick={() => updateAgent.mutate({ id: agent.id, data: { status: "offline" } })}>
                     <div className="w-1.5 h-1.5 rounded-full bg-gray-500 mr-2" /> Offline
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     className="text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 border-t border-border/50 rounded-none pt-2"
-                    onClick={() => deleteAgent.mutate({ id: agent.id })}
+                    onSelect={() => setPendingDelete({ id: agent.id, name: agent.name })}
                   >
                     <Trash2 className="w-3 h-3 mr-2" /> Decommission
                   </DropdownMenuItem>
@@ -232,6 +234,20 @@ export default function AgentsPage() {
           </div>
         ))}
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Decommission ${pendingDelete.name}?` : "Decommission agent?"}
+        description="This deletes the agent and its chat sessions. This cannot be undone."
+        confirmLabel="Decommission"
+        pending={deleteAgent.isPending}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteAgent.mutate({ id: pendingDelete.id }, { onSuccess: () => setPendingDelete(null) });
+        }}
+      />
     </div>
   );
 }
