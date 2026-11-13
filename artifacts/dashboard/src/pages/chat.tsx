@@ -9,6 +9,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { MessageContent } from "@/components/message-content";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Send, MessageSquare, ChevronLeft } from "lucide-react";
@@ -308,18 +310,13 @@ export default function ChatPage() {
                     </div>
                     <div 
                       className={cn(
-                        "p-4 rounded-lg text-sm leading-relaxed",
+                        "p-4 rounded-lg text-sm leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_code]:font-mono [&_a]:underline",
                         msg.role === "user" 
                           ? "bg-primary text-primary-foreground rounded-tr-sm" 
                           : "bg-card border border-border/50 rounded-tl-sm shadow-sm"
                       )}
                     >
-                      {msg.content.split('\n').map((line, i) => (
-                        <span key={i}>
-                          {line}
-                          {i !== msg.content.split('\n').length - 1 && <br />}
-                        </span>
-                      ))}
+                      <MessageContent content={msg.content} />
                     </div>
                   </div>
                 ))
@@ -330,8 +327,8 @@ export default function ChatPage() {
                     <span>YOU</span>
                     <span>sending</span>
                   </div>
-                  <div className="p-4 rounded-lg rounded-tr-sm text-sm leading-relaxed bg-primary text-primary-foreground">
-                    {optimisticMessage}
+                  <div className="p-4 rounded-lg rounded-tr-sm text-sm leading-relaxed bg-primary text-primary-foreground [&_p]:my-1 [&_a]:underline">
+                    <MessageContent content={optimisticMessage} />
                   </div>
                 </div>
               )}
@@ -346,12 +343,19 @@ export default function ChatPage() {
             {/* Input */}
             <div className="p-4 border-t border-border/50 bg-card/20">
               <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative flex items-end">
-                <Input
+                <Textarea
                   value={inputMessage}
                   onChange={e => setInputMessage(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   placeholder={`Send a message to ${activeSession.agentName}...`}
-                  className="w-full bg-background border-border/50 pr-12 py-6 text-sm font-sans focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
+                  className="w-full min-h-14 max-h-40 resize-none bg-background border-border/50 pr-12 text-sm font-sans focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
                   disabled={createMessage.isPending}
+                  rows={2}
                 />
                 <Button 
                   type="submit" 
@@ -363,7 +367,7 @@ export default function ChatPage() {
                 </Button>
               </form>
               <div className="text-center mt-2">
-                <span className="text-xs text-muted-foreground font-mono">AGENTIC OS // TERMINAL CHAT INTERFACE v1.0</span>
+                <span className="text-xs text-muted-foreground font-mono">Enter to send · Shift+Enter for a new line</span>
               </div>
             </div>
           </>
