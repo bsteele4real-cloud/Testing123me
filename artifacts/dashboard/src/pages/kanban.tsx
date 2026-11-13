@@ -77,7 +77,7 @@ export default function KanbanPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background p-6">
+    <div className="flex flex-col h-full bg-background p-4 md:p-6 min-w-0">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Task Queue</h1>
@@ -151,7 +151,7 @@ export default function KanbanPage() {
         </Dialog>
       </div>
 
-      <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
+      <div className="flex-1 flex gap-4 md:gap-6 overflow-x-auto pb-4 min-w-0">
         {COLUMNS.map(column => (
           <div key={column.id} className="w-80 flex-shrink-0 flex flex-col">
             <div className="mb-3 flex items-center justify-between">

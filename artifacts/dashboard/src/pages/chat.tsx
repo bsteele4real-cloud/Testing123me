@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Send, MessageSquare } from "lucide-react";
+import { Plus, Send, MessageSquare, ChevronLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -19,6 +19,7 @@ import { toast } from "@/hooks/use-toast";
 export default function ChatPage() {
   const queryClient = useQueryClient();
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [showSessionList, setShowSessionList] = useState(true);
   const [isNewSessionOpen, setIsNewSessionOpen] = useState(false);
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
@@ -88,6 +89,7 @@ export default function ChatPage() {
     pendingTextRef.current = text;
     setOptimisticMessage(text);
     setInputMessage("");
+    setShowSessionList(false);
     createMessage.mutate({
       id: activeSessionId,
       data: { content: text }
@@ -108,9 +110,11 @@ export default function ChatPage() {
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
   return (
-    <div className="flex h-full bg-background overflow-hidden">
-      {/* Sessions Sidebar */}
-      <div className="w-80 border-r border-border/50 flex flex-col bg-card/30">
+    <div className="flex h-full min-w-0 bg-background overflow-hidden">
+      <div className={cn(
+        "w-full md:w-80 border-r border-border/50 flex-col bg-card/30",
+        showSessionList ? "flex" : "hidden md:flex",
+      )}>
         <div className="p-4 border-b border-border/50 flex items-center justify-between">
           <h2 className="font-mono text-sm font-semibold tracking-wider">SESSIONS</h2>
           <Dialog open={isNewSessionOpen} onOpenChange={setIsNewSessionOpen}>
@@ -168,7 +172,10 @@ export default function ChatPage() {
           {sessions.map(session => (
             <div 
               key={session.id}
-              onClick={() => setActiveSessionId(session.id)}
+              onClick={() => {
+                setActiveSessionId(session.id);
+                setShowSessionList(false);
+              }}
               className={cn(
                 "p-3 rounded-md cursor-pointer transition-all border group",
                 activeSessionId === session.id 
@@ -199,12 +206,24 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-background/50 relative">
+      <div className={cn(
+        "flex-1 min-w-0 flex-col bg-background/50 relative",
+        showSessionList ? "hidden md:flex" : "flex",
+      )}>
         {activeSessionId && activeSession ? (
           <>
             {/* Header */}
-            <div className="h-14 border-b border-border/50 flex items-center px-6 bg-card/20 backdrop-blur-sm z-10 sticky top-0">
+            <div className="h-14 border-b border-border/50 flex items-center px-3 md:px-6 gap-2 bg-card/20 backdrop-blur-sm z-10 sticky top-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="md:hidden shrink-0"
+                aria-label="Back to sessions"
+                onClick={() => setShowSessionList(true)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
               <div className="flex items-center gap-3">
                 <div className="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]" style={{ backgroundColor: activeSession.agentAvatarColor }} />
                 <div>

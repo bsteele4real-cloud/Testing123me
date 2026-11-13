@@ -84,7 +84,7 @@ export default function AgentsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background p-6">
+    <div className="flex flex-col h-full min-w-0 bg-background p-4 md:p-6 overflow-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Agent Roster</h1>

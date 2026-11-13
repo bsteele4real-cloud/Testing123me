@@ -3,12 +3,22 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Server, MessageSquare, LayoutDashboard, Settings, User } from "lucide-react";
 
-export function Sidebar() {
+export function Sidebar({
+  onNavigate,
+  className,
+}: {
+  onNavigate?: () => void;
+  className?: string;
+}) {
   const [location] = useLocation();
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { data: agentData } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const agents = Array.isArray(agentData) ? agentData : [];
 
   return (
-    <div className="w-64 border-r border-sidebar-border bg-sidebar h-screen flex flex-col font-mono text-sm">
+    <div
+      className={cn("w-64 border-r border-sidebar-border bg-sidebar h-screen flex flex-col font-mono text-sm", className)}
+      onClick={onNavigate}
+    >
       <div className="p-4 border-b border-sidebar-border flex items-center gap-3">
         <div className="w-4 h-4 bg-primary flex items-center justify-center rounded-[2px]" />
         <span className="font-bold tracking-tight text-sidebar-foreground">AGENTIC OS</span>
