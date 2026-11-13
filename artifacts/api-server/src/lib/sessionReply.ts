@@ -110,11 +110,17 @@ export async function createSessionReply(
       role: "assistant",
       content: agentReply,
     });
-    await store.touchSession(sessionId, new Date());
-    await store.logActivity({
-      description: `Message sent in session #${sessionId}`,
-      agentId: agent.id,
-    });
+    try {
+      await store.touchSession(sessionId, new Date());
+      await store.logActivity({
+        description: `Message sent in session #${sessionId}`,
+        agentId: agent.id,
+      });
+    } catch {
+      await deleteQuietly(store, assistant.id);
+      await deleteQuietly(store, user.id);
+      return { ok: false, status: 500, error: "The agent could not reply. Try again." };
+    }
     return { ok: true, user, assistant };
   } catch {
     await deleteQuietly(store, user.id);

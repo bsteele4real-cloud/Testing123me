@@ -10,6 +10,7 @@ describe("resolveSessionTitle", () => {
   it("falls back to the agent name when the title is blank", () => {
     assert.equal(resolveSessionTitle("   ", "Scout"), "Session with Scout");
     assert.equal(resolveSessionTitle(undefined, "Scout"), "Session with Scout");
+    assert.equal(resolveSessionTitle("New Session", "Scout"), "Session with Scout");
   });
 
   it("bounds very long titles", () => {

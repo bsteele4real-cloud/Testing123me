@@ -157,4 +157,17 @@ describe("createSessionReply", () => {
     assert.equal(store.messages.some((message) => message.content === "new question"), false);
     assert.equal(store.activity, 0);
   });
+
+  it("removes the assistant row when a later save step fails", async () => {
+    const store = memoryStore();
+    store.touchSession = async () => {
+      throw new Error("clock skew");
+    };
+    const result = await createSessionReply(store, async () => "new answer", 7, "new question");
+
+    assert.equal(result.ok, false);
+    assert.equal(store.messages.some((message) => message.content === "new question"), false);
+    assert.equal(store.messages.some((message) => message.content === "new answer"), false);
+    assert.equal(store.activity, 0);
+  });
 });

@@ -62,63 +62,87 @@ export default function ChatPage() {
   const createMessage = useCreateMessage({
     mutation: {
       onSuccess: () => {
+        const sessionId = pendingSessionIdRef.current;
         pendingTextRef.current = null;
-        setInputMessage("");
-        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(activeSessionId!) });
+        pendingSessionIdRef.current = null;
+        setPendingSend(null);
+        if (activeSessionIdRef.current === sessionId) {
+          setInputMessage("");
+        }
+        if (sessionId != null) {
+          queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(sessionId) });
+        }
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
       },
       onError: (error) => {
         const failed = pendingTextRef.current ?? "";
+        const sessionId = pendingSessionIdRef.current;
         pendingTextRef.current = null;
-        setOptimisticMessage(null);
-        setInputMessage((current) => (current.trim() ? current : failed));
+        pendingSessionIdRef.current = null;
+        setPendingSend(null);
+        if (activeSessionIdRef.current === sessionId) {
+          setInputMessage((current) => (current.trim() ? current : failed));
+        }
         toastError("Agent did not reply", error);
       },
     }
   });
 
   const [inputMessage, setInputMessage] = useState("");
-  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
+  const [pendingSend, setPendingSend] = useState<{ sessionId: number; text: string } | null>(null);
   const pendingTextRef = useRef<string | null>(null);
+  const pendingSessionIdRef = useRef<number | null>(null);
+  const activeSessionIdRef = useRef<number | null>(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
   const handledAgentRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!Number.isInteger(requestedAgentId) || requestedAgentId <= 0) return;
+    if (!Number.isInteger(requestedAgentId) || requestedAgentId <= 0) {
+      handledAgentRef.current = null;
+      return;
+    }
     if (handledAgentRef.current === requestedAgentId) return;
     if (sessionsQuery.isLoading || agentsQuery.isLoading) return;
-    handledAgentRef.current = requestedAgentId;
+    if (sessionsFailed || agentsFailed) return;
     const match = sessions.find((session) => session.agentId === requestedAgentId);
     if (match) {
+      handledAgentRef.current = requestedAgentId;
       setActiveSessionId(match.id);
       setShowSessionList(false);
       return;
     }
     if (agents.some((agent) => agent.id === requestedAgentId)) {
+      handledAgentRef.current = requestedAgentId;
       setSelectedAgentId(requestedAgentId);
       setIsNewSessionOpen(true);
+      return;
     }
-  }, [requestedAgentId, sessions, agents, sessionsQuery.isLoading, agentsQuery.isLoading]);
+    handledAgentRef.current = requestedAgentId;
+  }, [requestedAgentId, sessions, agents, sessionsQuery.isLoading, agentsQuery.isLoading, sessionsFailed, agentsFailed]);
 
   useEffect(() => {
-    if (!optimisticMessage) return;
-    const saved = messages.some((message) => message.role === "user" && message.content === optimisticMessage);
-    if (saved) setOptimisticMessage(null);
-  }, [messages, optimisticMessage]);
+    if (!pendingSend || pendingSend.sessionId !== activeSessionId) return;
+    const saved = messages.some((message) => message.role === "user" && message.content === pendingSend.text);
+    if (saved) setPendingSend(null);
+  }, [messages, pendingSend, activeSessionId]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, optimisticMessage, createMessage.isPending]);
+  }, [messages, pendingSend, createMessage.isPending]);
+
+  const pendingHere = pendingSend?.sessionId === activeSessionId;
 
   const handleSendMessage = (e?: FormEvent) => {
     e?.preventDefault();
     const text = inputMessage.trim();
-    if (!text || !activeSessionId || createMessage.isPending) return;
+    if (!text || !activeSessionId || (pendingHere && createMessage.isPending)) return;
 
     pendingTextRef.current = text;
-    setOptimisticMessage(text);
+    pendingSessionIdRef.current = activeSessionId;
+    setPendingSend({ sessionId: activeSessionId, text });
     setInputMessage("");
     setShowSessionList(false);
     createMessage.mutate({
@@ -132,7 +156,7 @@ export default function ChatPage() {
     if (!selectedAgentId) return;
     createSession.mutate({
       data: {
-        title: newSessionTitle || "New Session",
+        title: newSessionTitle.trim() || undefined,
         agentId: selectedAgentId
       }
     });
@@ -293,7 +317,7 @@ export default function ChatPage() {
                 </div>
               ) : messagesQuery.isLoading ? (
                 <div role="status" className="text-sm text-muted-foreground">Loading messages…</div>
-              ) : messages.length === 0 && !optimisticMessage ? (
+              ) : messages.length === 0 && !pendingHere ? (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground font-mono">
                   [ System: Connection established with {activeSession.agentName}. Awaiting input. ]
                 </div>
@@ -326,18 +350,18 @@ export default function ChatPage() {
                   </div>
                 ))
               )}
-              {optimisticMessage && (
+              {pendingHere && pendingSend && (
                 <div className="max-w-[80%] ml-auto flex flex-col gap-1 items-end">
                   <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground mb-1">
                     <span>YOU</span>
                     <span>sending</span>
                   </div>
                   <div className="p-4 rounded-lg rounded-tr-sm text-sm leading-relaxed bg-primary text-primary-foreground [&_p]:my-1 [&_a]:underline">
-                    <MessageContent content={optimisticMessage} />
+                    <MessageContent content={pendingSend.text} />
                   </div>
                 </div>
               )}
-              {createMessage.isPending && (
+              {pendingHere && createMessage.isPending && (
                 <div className="mr-auto flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: activeSession.agentAvatarColor }} />
                   <span>{activeSession.agentName} is typing</span>
@@ -359,14 +383,14 @@ export default function ChatPage() {
                   }}
                   placeholder={`Send a message to ${activeSession.agentName}...`}
                   className="w-full min-h-14 max-h-40 resize-none bg-background border-border/50 pr-12 text-sm font-sans focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
-                  disabled={createMessage.isPending}
+                  disabled={pendingHere && createMessage.isPending}
                   rows={2}
                 />
                 <Button 
                   type="submit" 
                   size="icon" 
                   className="absolute right-2 bottom-2 h-8 w-8 rounded-sm"
-                  disabled={!inputMessage.trim() || createMessage.isPending}
+                  disabled={!inputMessage.trim() || (pendingHere && createMessage.isPending)}
                 >
                   <Send className="h-4 w-4" />
                 </Button>
