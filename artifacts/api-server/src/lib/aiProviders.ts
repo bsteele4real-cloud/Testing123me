@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
-import type { ChatTurn } from "./chatContext";
+import type { ChatTurn } from "./chatContext.ts";
+import { credentialsForModel } from "./models.ts";
 
 const MAX_TOKENS = 1_024;
 
@@ -33,29 +34,31 @@ function requireUserEnding(messages: ChatTurn[]): ChatTurn[] {
 
 export async function getAIResponse(request: AIChatRequest): Promise<string> {
   const messages = requireUserEnding(request.messages);
-  const model = request.model;
+  const credentials = credentialsForModel(request.model, process.env);
 
-  if (model.startsWith("gpt-")) {
+  if (credentials.provider === "openai" || credentials.provider === "hermes") {
     const client = new OpenAI({
-      apiKey: requireEnvironmentVariable("OPENAI_API_KEY"),
+      apiKey: credentials.apiKey,
+      ...(credentials.baseURL ? { baseURL: credentials.baseURL } : {}),
     });
     const completion = await client.chat.completions.create({
-      model,
+      model: credentials.model,
       messages: [
         { role: "system", content: request.systemPrompt },
         ...messages,
       ],
     });
 
-    return requireTextResponse(completion.choices[0]?.message.content, "OpenAI");
+    return requireTextResponse(
+      completion.choices[0]?.message.content,
+      credentials.provider === "hermes" ? "Hermes" : "OpenAI",
+    );
   }
 
-  if (model.startsWith("claude-")) {
-    const client = new Anthropic({
-      apiKey: requireEnvironmentVariable("ANTHROPIC_API_KEY"),
-    });
+  if (credentials.provider === "anthropic") {
+    const client = new Anthropic({ apiKey: credentials.apiKey });
     const message = await client.messages.create({
-      model,
+      model: credentials.model,
       max_tokens: MAX_TOKENS,
       system: request.systemPrompt,
       messages,
@@ -69,56 +72,24 @@ export async function getAIResponse(request: AIChatRequest): Promise<string> {
     return requireTextResponse(text, "Anthropic");
   }
 
-  if (model.startsWith("gemini-")) {
-    const client = new GoogleGenerativeAI(
-      requireEnvironmentVariable("GOOGLE_AI_API_KEY"),
-    );
-    const generative = client.getGenerativeModel({
-      model,
-      systemInstruction: request.systemPrompt,
-    });
-    const prior = messages.slice(0, -1);
-    const latest = messages[messages.length - 1]?.content ?? "";
-    const result =
-      prior.length === 0
-        ? await generative.generateContent(latest)
-        : await generative
-            .startChat({
-              history: prior.map((turn) => ({
-                role: turn.role === "assistant" ? "model" : "user",
-                parts: [{ text: turn.content }],
-              })),
-            })
-            .sendMessage(latest);
+  const client = new GoogleGenerativeAI(credentials.apiKey);
+  const generative = client.getGenerativeModel({
+    model: credentials.model,
+    systemInstruction: request.systemPrompt,
+  });
+  const prior = messages.slice(0, -1);
+  const latest = messages[messages.length - 1]?.content ?? "";
+  const result =
+    prior.length === 0
+      ? await generative.generateContent(latest)
+      : await generative
+          .startChat({
+            history: prior.map((turn) => ({
+              role: turn.role === "assistant" ? "model" : "user",
+              parts: [{ text: turn.content }],
+            })),
+          })
+          .sendMessage(latest);
 
-    return requireTextResponse(result.response.text(), "Google Gemini");
-  }
-
-  if (model === "hermes-2-pro") {
-    const client = new OpenAI({
-      apiKey: requireEnvironmentVariable("OPENAI_API_KEY"),
-      baseURL: requireEnvironmentVariable("HERMES_BASE_URL"),
-    });
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: request.systemPrompt },
-        ...messages,
-      ],
-    });
-
-    return requireTextResponse(completion.choices[0]?.message.content, "Hermes");
-  }
-
-  throw new Error(`Model "${model}" is not configured.`);
-}
-
-function requireEnvironmentVariable(name: string): string {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`${name} is required to use this model but is not configured.`);
-  }
-
-  return value;
+  return requireTextResponse(result.response.text(), "Google Gemini");
 }

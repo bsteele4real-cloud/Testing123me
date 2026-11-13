@@ -16,13 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 
 const MODEL_OPTIONS = [
-  "gpt-4-turbo",
-  "gpt-4o",
-  "gpt-3.5-turbo",
-  "claude-3-opus",
-  "claude-3-sonnet",
-  "gemini-1.5-pro",
-  "hermes-2-pro"
+  "gpt-6-luna",
+  "gpt-6.1-sol",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "gemini-4-hydrogen",
+  "Hermes-4-70B",
 ];
 
 const COLOR_OPTIONS = [
