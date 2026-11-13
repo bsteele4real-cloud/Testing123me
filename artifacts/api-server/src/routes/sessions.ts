@@ -7,6 +7,7 @@ import {
   GetSessionParams,
   DeleteSessionParams,
 } from "@workspace/api-zod";
+import { resolveSessionTitle } from "../lib/sessionTitle";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const title = `Session with ${agent.name}`;
+  const title = resolveSessionTitle(body.title, agent.name);
   const [session] = await db.insert(sessionsTable).values({
     title,
     agentId: body.agentId,
