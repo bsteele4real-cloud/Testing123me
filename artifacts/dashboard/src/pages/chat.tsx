@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type FormEvent } from "react";
 import { 
   useListSessions, getListSessionsQueryKey, 
   useListMessages, getListMessagesQueryKey, 
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Send, MessageSquare } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 
 export default function ChatPage() {
   const queryClient = useQueryClient();
@@ -46,30 +47,51 @@ export default function ChatPage() {
   const createMessage = useCreateMessage({
     mutation: {
       onSuccess: () => {
+        pendingTextRef.current = null;
+        setOptimisticMessage(null);
+        setInputMessage("");
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(activeSessionId!) });
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
-      }
+      },
+      onError: (error) => {
+        const failed = pendingTextRef.current ?? "";
+        pendingTextRef.current = null;
+        setOptimisticMessage(null);
+        setInputMessage((current) => (current.trim() ? current : failed));
+        toast({
+          variant: "destructive",
+          title: "Agent did not reply",
+          description: error instanceof Error
+            ? error.message
+            : "Your message was not saved. Try again.",
+        });
+      },
     }
   });
 
   const [inputMessage, setInputMessage] = useState("");
+  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
+  const pendingTextRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, optimisticMessage, createMessage.isPending]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || !activeSessionId) return;
-    
+  const handleSendMessage = (e?: FormEvent) => {
+    e?.preventDefault();
+    const text = inputMessage.trim();
+    if (!text || !activeSessionId || createMessage.isPending) return;
+
+    pendingTextRef.current = text;
+    setOptimisticMessage(text);
+    setInputMessage("");
     createMessage.mutate({
       id: activeSessionId,
-      data: { content: inputMessage }
+      data: { content: text }
     });
-    setInputMessage("");
   };
 
   const handleCreateSession = (e: React.FormEvent) => {
@@ -198,7 +220,7 @@ export default function ChatPage() {
 
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.length === 0 ? (
+              {messages.length === 0 && !optimisticMessage ? (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground font-mono">
                   [ System: Connection established with {activeSession.agentName}. Awaiting input. ]
                 </div>
@@ -235,6 +257,23 @@ export default function ChatPage() {
                     </div>
                   </div>
                 ))
+              )}
+              {optimisticMessage && (
+                <div className="max-w-[80%] ml-auto flex flex-col gap-1 items-end">
+                  <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground mb-1">
+                    <span>YOU</span>
+                    <span>sending</span>
+                  </div>
+                  <div className="p-4 rounded-lg rounded-tr-sm text-sm leading-relaxed bg-primary text-primary-foreground">
+                    {optimisticMessage}
+                  </div>
+                </div>
+              )}
+              {createMessage.isPending && (
+                <div className="mr-auto flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: activeSession.agentAvatarColor }} />
+                  <span>{activeSession.agentName} is typing</span>
+                </div>
               )}
             </div>
 
