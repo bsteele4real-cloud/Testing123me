@@ -8,6 +8,7 @@ import DashboardHome from "@/pages/index";
 import ChatPage from "@/pages/chat";
 import KanbanPage from "@/pages/kanban";
 import AgentsPage from "@/pages/agents";
+import SettingsPage from "@/pages/settings";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +20,7 @@ function Router() {
         <Route path="/chat" component={ChatPage} />
         <Route path="/kanban" component={KanbanPage} />
         <Route path="/agents" component={AgentsPage} />
+        <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
