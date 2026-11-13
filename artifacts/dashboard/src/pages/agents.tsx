@@ -194,7 +194,7 @@ export default function AgentsPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
-                  <div className="px-2 py-1.5 text-muted-foreground opacity-50 uppercase text-[10px]">Set Status</div>
+                  <div className="px-2 py-1.5 text-muted-foreground uppercase text-xs">Set Status</div>
                   <DropdownMenuItem onClick={() => updateAgent.mutate({ id: agent.id, data: { status: "online" } })}>
                     <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-2" /> Online
                   </DropdownMenuItem>
@@ -239,13 +239,13 @@ export default function AgentsPage() {
               {agent.description ? (
                 <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
               ) : (
-                <p className="text-sm text-muted-foreground italic opacity-50">No purpose defined.</p>
+                <p className="text-sm text-muted-foreground italic">No purpose defined.</p>
               )}
             </div>
 
             <div className="pt-4 border-t border-border/50 mt-auto">
               <div className="flex items-center justify-between">
-                <div className="bg-muted px-2 py-1 rounded-[2px] border border-border/50 text-[10px] font-mono">
+                <div className="bg-muted px-2 py-1 rounded-[2px] border border-border/50 text-xs font-mono">
                   {agent.model}
                 </div>
                 <div className="flex gap-3 text-muted-foreground font-mono text-xs">

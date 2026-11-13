@@ -176,7 +176,7 @@ export default function KanbanPage() {
           <div key={column.id} className="w-80 flex-shrink-0 flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-mono text-xs font-semibold text-muted-foreground">{column.label}</h3>
-              <span className="bg-muted px-2 py-0.5 rounded-sm text-[10px] font-mono">
+              <span className="bg-muted px-2 py-0.5 rounded-sm text-xs font-mono">
                 {tasks.filter(t => t.status === column.id).length}
               </span>
             </div>
@@ -195,7 +195,7 @@ export default function KanbanPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
-                        <div className="px-2 py-1.5 text-muted-foreground opacity-50 uppercase text-[10px]">Move to</div>
+                        <div className="px-2 py-1.5 text-muted-foreground uppercase text-xs">Move to</div>
                         {COLUMNS.filter(c => c.id !== task.status).map(c => (
                           <DropdownMenuItem 
                             key={c.id}
@@ -217,7 +217,7 @@ export default function KanbanPage() {
                   <div className="flex flex-col gap-2">
                     <div className="pr-6">
                       <span className={cn(
-                        "inline-block px-1.5 py-0.5 rounded-[2px] text-[9px] font-mono uppercase mb-2",
+                        "inline-block px-1.5 py-0.5 rounded-[2px] text-xs font-mono uppercase mb-2",
                         task.priority === "high" ? "bg-destructive/20 text-destructive border border-destructive/20" :
                         task.priority === "medium" ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20" :
                         "bg-blue-500/10 text-blue-500 border border-blue-500/20"
@@ -234,7 +234,7 @@ export default function KanbanPage() {
                     )}
                     
                     <div className="mt-3 flex items-center justify-between">
-                      <div className="text-[10px] font-mono text-muted-foreground opacity-60">
+                      <div className="text-xs font-mono text-muted-foreground">
                         #{task.id}
                       </div>
                       
@@ -244,12 +244,12 @@ export default function KanbanPage() {
                             className="w-1.5 h-1.5 rounded-full" 
                             style={{ backgroundColor: task.assigneeAvatarColor || 'currentColor' }} 
                           />
-                          <span className="text-[10px] font-mono truncate max-w-[80px]">
+                          <span className="text-xs font-mono truncate max-w-[80px]">
                             {task.assigneeAgentName}
                           </span>
                         </div>
                       ) : (
-                        <div className="text-[10px] font-mono text-muted-foreground opacity-50 italic">
+                        <div className="text-xs font-mono text-muted-foreground italic">
                           unassigned
                         </div>
                       )}

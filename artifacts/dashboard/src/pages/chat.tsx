@@ -226,15 +226,15 @@ export default function ChatPage() {
               <div className="flex justify-between items-start mb-1">
                 <div className="font-medium text-sm truncate pr-2">{session.title}</div>
                 {session.lastMessageAt && (
-                  <div className="text-[10px] font-mono whitespace-nowrap opacity-50">
+                  <div className="text-xs font-mono whitespace-nowrap text-muted-foreground">
                     {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: false })}
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono opacity-70">
+              <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: session.agentAvatarColor }} />
                 <span className="truncate">{session.agentName}</span>
-                <span className="px-1 py-0.5 bg-background border border-border/50 rounded-sm text-[9px]">{session.agentModel}</span>
+                <span className="px-1 py-0.5 bg-background border border-border/50 rounded-sm text-xs">{session.agentModel}</span>
               </div>
             </button>
           ))}
@@ -304,7 +304,7 @@ export default function ChatPage() {
                         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: activeSession.agentAvatarColor }} />
                       )}
                       <span>{msg.role === "user" ? "YOU" : activeSession.agentName.toUpperCase()}</span>
-                      <span className="opacity-40">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="text-muted-foreground">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                     <div 
                       className={cn(
@@ -363,7 +363,7 @@ export default function ChatPage() {
                 </Button>
               </form>
               <div className="text-center mt-2">
-                <span className="text-[10px] text-muted-foreground font-mono">AGENTIC OS // TERMINAL CHAT INTERFACE v1.0</span>
+                <span className="text-xs text-muted-foreground font-mono">AGENTIC OS // TERMINAL CHAT INTERFACE v1.0</span>
               </div>
             </div>
           </>
@@ -371,7 +371,7 @@ export default function ChatPage() {
           <div className="h-full flex items-center justify-center flex-col text-muted-foreground">
             <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
             <h3 className="font-mono text-sm tracking-widest">NO SESSION SELECTED</h3>
-            <p className="text-xs mt-2 opacity-50">Select a session from the sidebar or create a new one.</p>
+            <p className="text-xs mt-2 text-muted-foreground">Select a session from the sidebar or create a new one.</p>
           </div>
         )}
       </div>

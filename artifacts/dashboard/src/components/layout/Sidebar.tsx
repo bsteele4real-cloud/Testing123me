@@ -33,7 +33,7 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-6">
         <div className="px-3">
-          <h3 className="mb-2 px-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider">WORKSPACE</h3>
+          <h3 className="mb-2 px-2 text-xs font-semibold text-muted-foreground tracking-wider">WORKSPACE</h3>
           <div className="space-y-1">
             <Link href="/" className={itemClass(location === "/")}>
               <LayoutDashboard className="w-4 h-4" />
@@ -52,7 +52,7 @@ export function Sidebar({
 
         <div className="px-3">
           <div className="flex items-center justify-between mb-2 px-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/50 tracking-wider">AGENTS</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground tracking-wider">AGENTS</h3>
             <Link href="/agents" className="text-xs text-primary hover:underline">Manage</Link>
           </div>
           <div className="space-y-1">
@@ -78,7 +78,7 @@ export function Sidebar({
         </div>
 
         <div className="px-3">
-          <h3 className="mb-2 px-2 text-xs font-semibold text-sidebar-foreground/50 tracking-wider">SELF</h3>
+          <h3 className="mb-2 px-2 text-xs font-semibold text-muted-foreground tracking-wider">SELF</h3>
           <div className="space-y-1">
             <Link href="/settings" className={itemClass(location === "/settings")}>
               <Settings className="w-4 h-4" />
