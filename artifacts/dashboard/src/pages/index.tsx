@@ -1,11 +1,38 @@
-import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey } from "@workspace/api-client-react";
+import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey, useHealthCheck, getHealthCheckQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Cpu, MessageSquare, CheckSquare, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function DashboardHome() {
   const { data: stats } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
-  const { data: activity = [] } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const { data: activity = [], isLoading: activityLoading, isError: activityError } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const health = useHealthCheck({
+    query: {
+      queryKey: getHealthCheckQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
+
+  const systemLabel = health.isPending
+    ? "CHECKING"
+    : health.isError || health.data?.status !== "ok"
+      ? "UNAVAILABLE"
+      : "NOMINAL";
+  const databaseUp = health.data?.status === "ok";
+  const logLines = [
+    health.isPending
+      ? "[health] checking /api/healthz"
+      : health.isError
+        ? "[health] /api/healthz did not respond"
+        : `[health] /api/healthz status ${health.data?.status ?? "unknown"}`,
+    databaseUp ? "[db] postgres check passed" : "[db] postgres check did not pass",
+    ...(activityError ? ["[activity] feed unavailable"] : []),
+    ...(activityLoading ? ["[activity] loading recent events"] : []),
+    ...activity.slice(0, 8).map((item) => `[activity] ${item.description}`),
+  ];
+  if (!activityLoading && !activityError && activity.length === 0) {
+    logLines.push("[activity] no events recorded");
+  }
 
   return (
     <div className="flex-1 overflow-auto p-8 bg-background">
@@ -58,9 +85,9 @@ export default function DashboardHome() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">NOMINAL</div>
+            <div className={`text-2xl font-bold ${systemLabel === "NOMINAL" ? "text-green-500" : systemLabel === "CHECKING" ? "text-muted-foreground" : "text-destructive"}`}>{systemLabel}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              ALL SYSTEMS GO
+              {databaseUp ? "DATABASE REACHABLE" : "CHECK API AND DATABASE"}
             </p>
           </CardContent>
         </Card>
@@ -109,22 +136,18 @@ export default function DashboardHome() {
         </Card>
         
         <div className="border border-border/50 bg-card rounded-md overflow-hidden relative min-h-[300px]">
-          {/* Decorative Terminal view */}
           <div className="bg-muted px-4 py-2 border-b border-border/50 flex items-center gap-2">
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5" aria-hidden="true">
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50" />
               <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50" />
             </div>
-            <div className="text-xs font-mono text-muted-foreground ml-2">syslog - tail -f</div>
+            <div className="text-xs font-mono text-muted-foreground ml-2">live status</div>
           </div>
           <div className="p-4 font-mono text-xs text-muted-foreground space-y-1 overflow-auto h-[calc(100%-40px)]">
-            <div><span className="text-green-500">✔</span> [init] starting Agentic OS...</div>
-            <div><span className="text-green-500">✔</span> [db] connected to local sqlite</div>
-            <div><span className="text-primary">ℹ</span> [auth] local studio mode active</div>
-            <div><span className="text-green-500">✔</span> [api] listening on port 3000</div>
-            <div><span className="text-green-500">✔</span> [ws] websocket server ready</div>
-            <div className="pt-2 text-primary animate-pulse">_</div>
+            {logLines.map((line, index) => (
+              <div key={`${index}-${line}`}>{line}</div>
+            ))}
           </div>
         </div>
       </div>
