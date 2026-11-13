@@ -16,8 +16,11 @@ import { Plus, MoreVertical, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { TaskStatus } from "@workspace/api-client-react";
+import type { Task, TaskStatus, Agent } from "@workspace/api-client-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryState } from "@/components/query-state";
+import { readList } from "@/lib/query";
+import { toastError } from "@/lib/notify";
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: "todo", label: "TODO" },
@@ -28,8 +31,10 @@ const COLUMNS: { id: TaskStatus; label: string }[] = [
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
-  const { data: tasks = [] } = useListTasks({ query: { queryKey: getListTasksQueryKey() } });
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const tasksQuery = useListTasks({ query: { queryKey: getListTasksQueryKey() } });
+  const agentsQuery = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { items: tasks, failed: tasksFailed } = readList<Task>(tasksQuery.data, tasksQuery.isError);
+  const { items: agents } = readList<Agent>(agentsQuery.data, agentsQuery.isError);
 
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -47,19 +52,25 @@ export default function KanbanPage() {
         setNewTaskDesc("");
         setNewTaskPriority("medium");
         setNewTaskAssignee("none");
-      }
+      },
+      onError: (error) => toastError("Could not create task", error),
     }
   });
 
   const updateTask = useUpdateTask({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      onError: (error) => toastError("Could not update task", error),
     }
   });
 
   const deleteTask = useDeleteTask({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() })
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        setPendingDelete(null);
+      },
+      onError: (error) => toastError("Could not delete task", error),
     }
   });
 
@@ -153,6 +164,13 @@ export default function KanbanPage() {
         </Dialog>
       </div>
 
+      <QueryState
+        isLoading={tasksQuery.isLoading}
+        isError={tasksFailed}
+        loadingLabel="Loading tasks…"
+        errorLabel="Tasks could not be loaded."
+        onRetry={() => tasksQuery.refetch()}
+      >
       <div className="flex-1 flex gap-4 md:gap-6 overflow-x-auto pb-4 min-w-0">
         {COLUMNS.map(column => (
           <div key={column.id} className="w-80 flex-shrink-0 flex flex-col">
@@ -243,6 +261,7 @@ export default function KanbanPage() {
           </div>
         ))}
       </div>
+      </QueryState>
       <ConfirmDialog
         open={pendingDelete !== null}
         title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete task?"}
@@ -254,7 +273,7 @@ export default function KanbanPage() {
         }}
         onConfirm={() => {
           if (!pendingDelete) return;
-          deleteTask.mutate({ id: pendingDelete.id }, { onSuccess: () => setPendingDelete(null) });
+          deleteTask.mutate({ id: pendingDelete.id });
         }}
       />
     </div>

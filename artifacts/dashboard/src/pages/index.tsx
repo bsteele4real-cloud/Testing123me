@@ -1,11 +1,19 @@
-import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey, useHealthCheck, getHealthCheckQueryKey } from "@workspace/api-client-react";
+import { useGetDashboardStats, getGetDashboardStatsQueryKey, useGetRecentActivity, getGetRecentActivityQueryKey, useHealthCheck, getHealthCheckQueryKey, type ActivityItem } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Cpu, MessageSquare, CheckSquare, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { readList } from "@/lib/query";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardHome() {
-  const { data: stats } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
-  const { data: activity = [], isLoading: activityLoading, isError: activityError } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const statsQuery = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
+  const activityQuery = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() } });
+  const activityResult = readList<ActivityItem>(activityQuery.data, activityQuery.isError);
+  const activity = activityResult.items;
+  const activityLoading = activityQuery.isLoading;
+  const activityError = activityResult.failed;
+  const count = (value: number | undefined) =>
+    statsQuery.isLoading || statsQuery.isError ? "—" : String(value ?? 0);
   const health = useHealthCheck({
     query: {
       queryKey: getHealthCheckQueryKey(),
@@ -37,6 +45,12 @@ export default function DashboardHome() {
   return (
     <div className="flex-1 overflow-auto p-4 md:p-8 bg-background">
       <h1 className="text-2xl font-sans font-bold tracking-tight mb-8">Mission Control</h1>
+      {statsQuery.isError && (
+        <div role="alert" className="mb-6 border border-destructive/40 bg-destructive/10 rounded-md p-4 text-sm flex items-center justify-between gap-3">
+          <span>Dashboard totals could not be loaded.</span>
+          <Button type="button" variant="outline" onClick={() => statsQuery.refetch()}>Retry</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card className="bg-card border-border/50">
@@ -45,9 +59,9 @@ export default function DashboardHome() {
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalAgents || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalAgents)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              <span className="text-green-500">{stats?.onlineAgents || 0}</span> ONLINE
+              <span className="text-green-500">{count(statsQuery.data?.onlineAgents)}</span> ONLINE
             </p>
           </CardContent>
         </Card>
@@ -58,9 +72,9 @@ export default function DashboardHome() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalSessions || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalSessions)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1">
-              {stats?.totalMessages || 0} MESSAGES EXCHANGED
+              {count(statsQuery.data?.totalMessages)} MESSAGES EXCHANGED
             </p>
           </CardContent>
         </Card>
@@ -71,10 +85,10 @@ export default function DashboardHome() {
             <CheckSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalTasks || 0}</div>
+            <div className="text-2xl font-bold">{count(statsQuery.data?.totalTasks)}</div>
             <p className="text-xs text-muted-foreground font-mono mt-1 flex gap-2">
-              <span className="text-primary">{stats?.tasksByStatus?.todo || 0} TODO</span>
-              <span className="text-yellow-500">{stats?.tasksByStatus?.in_progress || 0} IN_PROG</span>
+              <span className="text-primary">{count(statsQuery.data?.tasksByStatus?.todo)} TODO</span>
+              <span className="text-yellow-500">{count(statsQuery.data?.tasksByStatus?.in_progress)} IN_PROG</span>
             </p>
           </CardContent>
         </Card>
@@ -100,6 +114,13 @@ export default function DashboardHome() {
           </CardHeader>
           <CardContent className="flex-1">
             <div className="space-y-4">
+              {activityError && (
+                <div role="alert" className="text-sm">
+                  Activity could not be loaded.
+                  <Button type="button" variant="outline" className="ml-3" onClick={() => activityQuery.refetch()}>Retry</Button>
+                </div>
+              )}
+              {activityLoading && <div role="status" className="text-sm text-muted-foreground">Loading activity…</div>}
               {activity.map((item) => (
                 <div key={item.id} className="flex items-start gap-4">
                   <div className="mt-0.5">
@@ -128,7 +149,7 @@ export default function DashboardHome() {
                   </div>
                 </div>
               ))}
-              {activity.length === 0 && (
+              {!activityLoading && !activityError && activity.length === 0 && (
                 <div className="text-sm text-muted-foreground text-center py-8">No recent activity</div>
               )}
             </div>

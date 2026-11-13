@@ -15,6 +15,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryState } from "@/components/query-state";
+import { readList } from "@/lib/query";
+import { toastError } from "@/lib/notify";
+import type { Agent } from "@workspace/api-client-react";
 
 const MODEL_OPTIONS = [
   "gpt-6-luna",
@@ -38,7 +42,8 @@ const COLOR_OPTIONS = [
 
 export default function AgentsPage() {
   const queryClient = useQueryClient();
-  const { data: agents = [] } = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const agentsQuery = useListAgents({ query: { queryKey: getListAgentsQueryKey() } });
+  const { items: agents, failed: agentsFailed } = readList<Agent>(agentsQuery.data, agentsQuery.isError);
   
   const [isNewAgentOpen, setIsNewAgentOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -56,19 +61,25 @@ export default function AgentsPage() {
         setNewDesc("");
         setNewModel(MODEL_OPTIONS[0]);
         setNewColor(COLOR_OPTIONS[0]);
-      }
+      },
+      onError: (error) => toastError("Could not deploy agent", error),
     }
   });
 
   const updateAgent = useUpdateAgent({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() }),
+      onError: (error) => toastError("Could not update agent", error),
     }
   });
 
   const deleteAgent = useDeleteAgent({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() })
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() });
+        setPendingDelete(null);
+      },
+      onError: (error) => toastError("Could not decommission agent", error),
     }
   });
 
@@ -139,11 +150,14 @@ export default function AgentsPage() {
                 <Label className="font-mono text-xs">IDENTIFIER COLOR</Label>
                 <div className="flex gap-2">
                   {COLOR_OPTIONS.map(c => (
-                    <div 
+                    <button
+                      type="button"
                       key={c}
+                      aria-label={`Identifier color ${c}`}
+                      aria-pressed={newColor === c}
                       onClick={() => setNewColor(c)}
                       className={cn(
-                        "w-6 h-6 rounded-sm cursor-pointer transition-all",
+                        "w-6 h-6 rounded-sm transition-all",
                         newColor === c ? "ring-2 ring-primary ring-offset-2 ring-offset-card scale-110" : "opacity-50 hover:opacity-100"
                       )}
                       style={{ backgroundColor: c }}
@@ -159,7 +173,17 @@ export default function AgentsPage() {
         </Dialog>
       </div>
 
+      <QueryState
+        isLoading={agentsQuery.isLoading}
+        isError={agentsFailed}
+        loadingLabel="Loading agents…"
+        errorLabel="Agents could not be loaded."
+        onRetry={() => agentsQuery.refetch()}
+      >
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {agents.length === 0 && (
+          <p className="text-sm text-muted-foreground font-mono">No agents deployed.</p>
+        )}
         {agents.map((agent) => (
           <div key={agent.id} className="bg-card border border-border/50 rounded-lg p-5 hover:border-primary/30 transition-colors group relative flex flex-col h-full">
             <div className="absolute top-4 right-4">
@@ -234,6 +258,7 @@ export default function AgentsPage() {
           </div>
         ))}
       </div>
+      </QueryState>
       <ConfirmDialog
         open={pendingDelete !== null}
         title={pendingDelete ? `Decommission ${pendingDelete.name}?` : "Decommission agent?"}
@@ -245,7 +270,7 @@ export default function AgentsPage() {
         }}
         onConfirm={() => {
           if (!pendingDelete) return;
-          deleteAgent.mutate({ id: pendingDelete.id }, { onSuccess: () => setPendingDelete(null) });
+          deleteAgent.mutate({ id: pendingDelete.id });
         }}
       />
     </div>
